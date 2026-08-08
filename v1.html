@@ -1269,7 +1269,7 @@ setTimeout(()=>{ document.getElementById('splash').classList.add('hide'); }, 260
     if(!splash) return;
 
     // Ensure splash is visible once DOM is ready, then hide after SHOW_MS.
-    const SHOW_MS = 1600; // visible duration in ms (adjustable)
+    const SHOW_MS = 3000; // visible duration in ms (adjustable)
     window.addEventListener('DOMContentLoaded', () => {
       // Remove the 'hide' class to make it appear (CSS handles transition)
       splash.classList.remove('hide');
@@ -1283,7 +1283,7 @@ setTimeout(()=>{ document.getElementById('splash').classList.add('hide'); }, 260
     // Safety: also hide after a maximum timeout in case DOMContentLoaded fired earlier
     setTimeout(() => {
       if (!splash.classList.contains('hide')) splash.classList.add('hide');
-    }, SHOW_MS + 3000);
+    }, SHOW_MS + 5000);
   })();
 </script>
 
