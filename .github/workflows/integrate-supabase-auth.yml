@@ -1,0 +1,50 @@
+name: Integrate Supabase Auth
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Frontend v1.0 - UI Complete.html'
+      - 'supabase-auth.js'
+      - '.github/workflows/integrate-supabase-auth.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Add Supabase auth script to frontend
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('Frontend v1.0 - UI Complete.html')
+          text = path.read_text(encoding='utf-8')
+          script = '<script src="supabase-auth.js"></script>'
+
+          if script not in text:
+              marker = '</body>'
+              if marker not in text.lower():
+                  raise SystemExit('Could not find </body> in frontend HTML.')
+
+              idx = text.lower().rfind(marker)
+              text = text[:idx] + '\n' + script + '\n' + text[idx:]
+              path.write_text(text, encoding='utf-8')
+
+      - name: Commit integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "Frontend v1.0 - UI Complete.html"
+          if git diff --cached --quiet; then
+            echo "No frontend change needed."
+          else
+            git commit -m "Load Supabase authentication in frontend"
+            git push
+          fi
