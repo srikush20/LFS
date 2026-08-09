@@ -40,9 +40,10 @@
       throw new Error('Invalid registration decision.');
     }
 
+    // The live Postgres function uses p_action as its decision argument.
     const { data, error } = await client().rpc('review_registration_request', {
       p_request_id: requestId,
-      p_decision: decision,
+      p_action: decision,
       p_rejection_reason: rejectionReason || null
     });
 
