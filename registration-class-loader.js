@@ -1,11 +1,13 @@
 // LFS registration class loader
-// Uses a SECURITY DEFINER RPC because new users are not authenticated yet.
+// Uses the SECURITY DEFINER RPC because new users are not authenticated yet.
 (function () {
   'use strict';
 
+  let retryTimer = null;
+
   async function loadClasses() {
     const select = document.getElementById('lfs-reg-class');
-    if (!select || !window.LFS_SUPABASE_READY) return;
+    if (!select || !window.LFS_SUPABASE_READY) return false;
 
     try {
       const sb = await window.LFS_SUPABASE_READY();
@@ -24,18 +26,33 @@
       if (!data || data.length === 0) {
         select.innerHTML = '<option value="">No classes available</option>';
       }
+      return true;
     } catch (error) {
       console.error('LFS registration class RPC error:', error);
-      select.innerHTML = '<option value="">Could not load classes</option>';
+      return false;
     }
+  }
+
+  function refreshRegistrationClasses() {
+    clearTimeout(retryTimer);
+    let attempts = 0;
+    const run = async () => {
+      attempts += 1;
+      const ok = await loadClasses();
+      if (!ok && attempts < 5) retryTimer = setTimeout(run, 300);
+    };
+    run();
   }
 
   function watchRegistrationModal() {
     const observer = new MutationObserver(() => {
       const modal = document.getElementById('lfs-register-modal');
-      if (modal?.classList.contains('show')) loadClasses();
+      if (modal?.classList.contains('show')) refreshRegistrationClasses();
     });
     observer.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class'] });
+
+    const modal = document.getElementById('lfs-register-modal');
+    if (modal?.classList.contains('show')) refreshRegistrationClasses();
   }
 
   if (document.readyState === 'loading') {
