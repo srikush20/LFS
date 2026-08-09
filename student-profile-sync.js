@@ -31,14 +31,14 @@
     const { data: student, error: studentError } = await sb
       .from('students')
       .select('id, admission_number')
-      .eq('profile_id', user.id)
+      .eq('profile_id', profile.id)
       .maybeSingle();
     if (studentError) throw studentError;
     if (!student) return null;
 
     const { data: assignment, error: assignmentError } = await sb
       .from('student_class_assignments')
-      .select('class_section_id, roll_number, academic_year')
+      .select('id, class_section_id, roll_number, academic_year')
       .eq('student_id', student.id)
       .order('academic_year', { ascending: false })
       .limit(1)
@@ -48,14 +48,14 @@
     let className = '';
     let section = '';
     if (assignment?.class_section_id != null) {
-      const { data: classRow, error: classError } = await sb
-        .from('classes')
-        .select('name, section')
+      const { data: classSection, error: classSectionError } = await sb
+        .from('class_sections')
+        .select('id, section, academic_year, classes(name)')
         .eq('id', assignment.class_section_id)
         .maybeSingle();
-      if (classError) throw classError;
-      className = classRow?.name || '';
-      section = classRow?.section || '';
+      if (classSectionError) throw classSectionError;
+      className = classSection?.classes?.name || '';
+      section = classSection?.section || '';
     }
 
     cached = {
@@ -85,7 +85,9 @@
       const rollText = data.assignment?.roll_number != null && data.assignment.roll_number !== ''
         ? `Roll No. ${data.assignment.roll_number}`
         : '';
-      const subtitle = [classText, rollText].filter(Boolean).join(' · ');
+      const subtitle = classText || rollText
+        ? [classText, rollText].filter(Boolean).join(' · ')
+        : 'Class not assigned';
       const avatar = initials(name);
 
       const roots = [
@@ -103,7 +105,7 @@
         const sub = greet.querySelector('p');
         const av = greet.querySelector('.avatar');
         if (heading) heading.textContent = `Hi, ${name}`;
-        if (sub && subtitle) sub.textContent = subtitle;
+        if (sub) sub.textContent = subtitle;
         if (av) av.textContent = avatar;
       });
 
@@ -113,6 +115,17 @@
       if (pfName) pfName.textContent = name;
       if (pfRole) pfRole.textContent = `Student${classText ? ' · ' + classText : ''}`;
       if (pfAvatar) pfAvatar.textContent = avatar;
+
+      if (window.LFS_CURRENT_STUDENT) {
+        const idCard = document.querySelector('#sheetBody .idcard');
+        if (idCard) {
+          const body2 = idCard.querySelector('.body2');
+          const nameEl = body2?.querySelector('b');
+          const infoEl = body2?.querySelector('span');
+          if (nameEl) nameEl.textContent = name;
+          if (infoEl) infoEl.textContent = subtitle;
+        }
+      }
     } finally {
       applying = false;
     }
@@ -132,39 +145,6 @@
     applyStudentData(cached);
     return cached;
   };
-
-  const originalSetProfileFor = window.setProfileFor;
-  if (typeof originalSetProfileFor === 'function') {
-    window.setProfileFor = function (role) {
-      const result = originalSetProfileFor.apply(this, arguments);
-      if (role === 'student') {
-        [0, 50, 250, 750].forEach(ms => setTimeout(sync, ms));
-      }
-      return result;
-    };
-  }
-
-  const originalShowIdCard = window.showIdCard;
-  if (typeof originalShowIdCard === 'function') {
-    window.showIdCard = function () {
-      const result = originalShowIdCard.apply(this, arguments);
-      setTimeout(() => {
-        if (!cached) return;
-        const idCard = document.querySelector('#sheetBody .idcard');
-        if (!idCard) return;
-        const body2 = idCard.querySelector('.body2');
-        const nameEl = body2?.querySelector('b');
-        const infoEl = body2?.querySelector('span');
-        if (nameEl) nameEl.textContent = cached.name;
-        const classText = cached.className
-          ? `Class ${cached.className}${cached.section ? ' · ' + cached.section : ''}`
-          : '';
-        const rollText = cached.assignment?.roll_number != null ? `Roll No. ${cached.assignment.roll_number}` : '';
-        if (infoEl) infoEl.textContent = [classText, rollText].filter(Boolean).join(' · ');
-      }, 0);
-      return result;
-    };
-  }
 
   function start() {
     sync();
