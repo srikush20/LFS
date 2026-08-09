@@ -61,13 +61,13 @@
     document.getElementById('lfs-review-close').onclick = () => panel.remove();
     panel.querySelectorAll('[data-approve]').forEach(btn => btn.onclick = async () => {
       btn.disabled = true;
-      try { await window.LFS_APPROVAL.reviewRegistrationRequest(Number(btn.dataset.approve), 'approved'); await renderRegistrationReviewPanel(); }
+      try { await window.LFS_APPROVAL.reviewRegistrationRequest(Number(btn.dataset.approve), 'approve'); await renderRegistrationReviewPanel(); }
       catch (e) { alert(e.message || 'Approval failed.'); btn.disabled = false; }
     });
     panel.querySelectorAll('[data-reject]').forEach(btn => btn.onclick = async () => {
       const reason = prompt('Reason for rejection (optional):') || '';
       btn.disabled = true;
-      try { await window.LFS_APPROVAL.reviewRegistrationRequest(Number(btn.dataset.reject), 'rejected', reason); await renderRegistrationReviewPanel(); }
+      try { await window.LFS_APPROVAL.reviewRegistrationRequest(Number(btn.dataset.reject), 'reject', reason); await renderRegistrationReviewPanel(); }
       catch (e) { alert(e.message || 'Rejection failed.'); btn.disabled = false; }
     });
   }
