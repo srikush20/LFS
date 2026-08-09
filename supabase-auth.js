@@ -151,20 +151,6 @@
     if (error) throw error;
     if (!data.user) throw new Error('Registration could not be completed.');
 
-    if (data.session) {
-      const { error: requestError } = await sb.from('registration_requests').insert({
-        auth_user_id: data.user.id,
-        full_name: fullName,
-        email,
-        requested_role: role,
-        class_section_id: classSectionId || null,
-        roll_number: rollNumber || null,
-        employee_id: employeeId || null
-      });
-      if (requestError) throw requestError;
-      await sb.auth.signOut();
-    }
-
     return {
       user: data.user,
       requiresEmailConfirmation: !data.session
@@ -218,6 +204,135 @@
     if (pass) pass.autocomplete = 'current-password';
   }
 
+  function injectRegistrationUI() {
+    if (document.getElementById('lfs-register-btn') || !document.getElementById('idInput')) return;
+
+    const style = document.createElement('style');
+    style.textContent = `
+      #lfs-register-btn{width:100%;margin-top:10px;padding:12px 14px;border-radius:14px;background:var(--surface,#fff);color:var(--primary,#1565C0);border:1.5px solid var(--line,#D7E6FA);font:700 13px Inter,sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(13,71,161,.08)}
+      #lfs-register-modal{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(0,0,0,.6);backdrop-filter:blur(5px)}
+      #lfs-register-modal.show{display:flex}
+      .lfs-reg-card{width:min(420px,100%);max-height:92vh;overflow:auto;background:var(--surface,#fff);color:var(--ink,#0B2545);border-radius:24px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+      .lfs-reg-card h2{margin:0 0 5px;font:800 20px Poppins,sans-serif}.lfs-reg-card p{margin:0 0 16px;color:var(--ink-soft,#4C6178);font-size:12px}.lfs-reg-card label{display:block;margin:10px 0 5px;font-size:11px;font-weight:700}.lfs-reg-card input,.lfs-reg-card select{width:100%;padding:11px 12px;border:1px solid var(--line,#D7E6FA);border-radius:11px;background:var(--bg,#EEF5FF);color:var(--ink,#0B2545);outline:none}.lfs-reg-actions{display:flex;gap:9px;margin-top:16px}.lfs-reg-actions button{flex:1;padding:11px;border-radius:12px;font-weight:700;cursor:pointer}.lfs-reg-primary{background:linear-gradient(120deg,var(--primary,#1565C0),var(--accent,#42A5F5));color:#fff}.lfs-reg-secondary{background:var(--bg-2,#E2EEFC);color:var(--primary,#1565C0)}.lfs-reg-status{margin-top:12px;font-size:12px;line-height:1.45}
+    `;
+    document.head.appendChild(style);
+
+    const btn = document.createElement('button');
+    btn.id = 'lfs-register-btn';
+    btn.type = 'button';
+    btn.innerHTML = '<i class="fa-solid fa-user-plus"></i> Create a new account';
+    btn.onclick = openRegistration;
+
+    const passField = document.getElementById('fieldPass');
+    const anchor = passField?.parentElement || document.getElementById('passInput')?.parentElement;
+    if (anchor?.parentElement) anchor.parentElement.appendChild(btn);
+    else document.body.appendChild(btn);
+
+    const modal = document.createElement('div');
+    modal.id = 'lfs-register-modal';
+    modal.innerHTML = `
+      <div class="lfs-reg-card">
+        <h2>Create school account</h2>
+        <p>Submit your details. Your account will remain inactive until the school approves your registration.</p>
+        <label>Account type</label>
+        <select id="lfs-reg-role"><option value="student">Student</option><option value="teacher">Teacher</option></select>
+        <label>Full name</label><input id="lfs-reg-name" autocomplete="name" placeholder="Full name">
+        <label>Email address</label><input id="lfs-reg-email" type="email" autocomplete="email" placeholder="Email address">
+        <label>Password</label><input id="lfs-reg-password" type="password" autocomplete="new-password" placeholder="At least 6 characters">
+        <div id="lfs-reg-student-fields">
+          <label>Class & section</label><select id="lfs-reg-class"><option value="">Loading classes...</option></select>
+          <label>Roll number</label><input id="lfs-reg-roll" placeholder="Roll number">
+        </div>
+        <div id="lfs-reg-teacher-fields" style="display:none">
+          <label>Employee ID</label><input id="lfs-reg-employee" placeholder="Employee ID">
+        </div>
+        <div id="lfs-reg-status" class="lfs-reg-status"></div>
+        <div class="lfs-reg-actions"><button class="lfs-reg-secondary" type="button" id="lfs-reg-cancel">Cancel</button><button class="lfs-reg-primary" type="button" id="lfs-reg-submit">Submit request</button></div>
+      </div>`;
+    document.body.appendChild(modal);
+
+    document.getElementById('lfs-reg-cancel').onclick = closeRegistration;
+    document.getElementById('lfs-reg-role').onchange = updateRegistrationRole;
+    document.getElementById('lfs-reg-submit').onclick = handleRegistrationSubmit;
+    modal.addEventListener('click', e => { if (e.target === modal) closeRegistration(); });
+  }
+
+  async function loadRegistrationClasses() {
+    const select = document.getElementById('lfs-reg-class');
+    if (!select) return;
+    try {
+      const sb = await loadSupabase();
+      const { data, error } = await sb.from('class_sections')
+        .select('id, section, stream, subject_combination, academic_year, classes(name)')
+        .order('id');
+      if (error) throw error;
+      select.innerHTML = '<option value="">Select class & section</option>';
+      (data || []).forEach(row => {
+        const className = row.classes?.name || 'Class';
+        const details = [row.section, row.stream, row.subject_combination].filter(Boolean).join(' • ');
+        const option = document.createElement('option');
+        option.value = row.id;
+        option.textContent = details ? `${className} — ${details}` : className;
+        select.appendChild(option);
+      });
+      if (!data?.length) select.innerHTML = '<option value="">No classes available</option>';
+    } catch (error) {
+      console.error('LFS class loading error:', error);
+      select.innerHTML = '<option value="">Could not load classes</option>';
+    }
+  }
+
+  function updateRegistrationRole() {
+    const role = document.getElementById('lfs-reg-role')?.value;
+    const student = document.getElementById('lfs-reg-student-fields');
+    const teacher = document.getElementById('lfs-reg-teacher-fields');
+    if (student) student.style.display = role === 'student' ? '' : 'none';
+    if (teacher) teacher.style.display = role === 'teacher' ? '' : 'none';
+  }
+
+  function openRegistration() {
+    const modal = document.getElementById('lfs-register-modal');
+    if (!modal) return;
+    modal.classList.add('show');
+    document.getElementById('lfs-reg-status').textContent = '';
+    updateRegistrationRole();
+    loadRegistrationClasses();
+  }
+
+  function closeRegistration() {
+    document.getElementById('lfs-register-modal')?.classList.remove('show');
+  }
+
+  async function handleRegistrationSubmit() {
+    const status = document.getElementById('lfs-reg-status');
+    const submit = document.getElementById('lfs-reg-submit');
+    const role = document.getElementById('lfs-reg-role').value;
+    const fullName = document.getElementById('lfs-reg-name').value.trim();
+    const email = document.getElementById('lfs-reg-email').value.trim();
+    const password = document.getElementById('lfs-reg-password').value;
+    const classSectionId = document.getElementById('lfs-reg-class').value || null;
+    const rollNumber = document.getElementById('lfs-reg-roll').value.trim();
+    const employeeId = document.getElementById('lfs-reg-employee').value.trim();
+
+    status.textContent = '';
+    submit.disabled = true;
+    try {
+      const result = await submitRegistration({ fullName, email, password, role, classSectionId, rollNumber, employeeId });
+      status.textContent = result.requiresEmailConfirmation
+        ? 'Registration submitted. Check your email to confirm it, then wait for school approval.'
+        : 'Registration submitted successfully. Your account is waiting for school approval.';
+      status.style.color = 'var(--success,#2FA86A)';
+      if (typeof toast === 'function') toast('Registration request submitted');
+      setTimeout(closeRegistration, 2200);
+    } catch (error) {
+      console.error('LFS registration error:', error);
+      status.textContent = friendlyAuthError(error);
+      status.style.color = 'var(--rose,#D64550)';
+    } finally {
+      submit.disabled = false;
+    }
+  }
+
   window.LFS_REGISTER = submitRegistration;
   window.doLogin = realLogin;
   window.doLogout = realLogout;
@@ -228,6 +343,7 @@
       window.LFS_EXPECTED_ROLE = role;
       originalShowLogin(role);
       prepareLoginUI();
+      setTimeout(injectRegistrationUI, 0);
     };
   }
 
@@ -235,5 +351,6 @@
   window.LFS_SUPABASE_READY.then(() => {
     prepareLoginUI();
     restoreSession();
+    setTimeout(injectRegistrationUI, 0);
   }).catch(error => console.error('LFS Supabase initialization failed:', error));
 })();
