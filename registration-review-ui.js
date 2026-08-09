@@ -44,7 +44,6 @@
           <button id="lfs-student-back" style="width:42px;height:42px;border-radius:12px;background:var(--surface,#0F2A44);color:var(--primary,#4C8DE0);font-size:18px">←</button>
           <div style="flex:1"><div style="font-size:21px;font-weight:800">Student Management</div><div style="font-size:12px;color:var(--ink-soft,#9BB3CC)">${allowed.length} pending registration${allowed.length === 1 ? '' : 's'}</div></div>
         </div>
-
         <section style="background:var(--surface,#0F2A44);border:1px solid var(--line,#1C3A57);border-radius:18px;padding:16px;margin-bottom:14px">
           <div style="font-size:15px;font-weight:800;margin-bottom:4px">Pending Registrations</div>
           <div style="font-size:12px;color:var(--ink-soft,#9BB3CC);margin-bottom:12px">Students waiting for school approval.</div>
@@ -59,7 +58,6 @@
               </div>
             </article>`).join('') : '<div style="padding:18px 4px;text-align:center;color:var(--ink-soft,#9BB3CC)">No pending student registrations.</div>'}
         </section>
-
         <section style="background:var(--surface,#0F2A44);border:1px solid var(--line,#1C3A57);border-radius:18px;padding:16px">
           <div style="font-size:15px;font-weight:800">Student records</div>
           <div style="font-size:12px;color:var(--ink-soft,#9BB3CC);margin-top:4px">Existing approved student records will be connected here next. The pending approval workflow above is live now.</div>
@@ -93,7 +91,17 @@
   }
 
   function interceptStudentManagementClick(e) {
-    const target = e.target.closest('[data-detail="studentmgmt"]');
+    let target = e.target.closest('[data-detail="studentmgmt"]');
+
+    // Fallback for the existing Admin UI: some versions of the large HTML do not
+    // expose the student-management item with a data-detail attribute.
+    if (!target) {
+      const candidate = e.target.closest('.list-row, .mini-card, button, a, [role="button"]');
+      if (candidate && /student\s+management/i.test(candidate.textContent || '')) {
+        target = candidate;
+      }
+    }
+
     if (!target) return;
     e.preventDefault();
     e.stopPropagation();
