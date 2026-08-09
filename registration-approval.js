@@ -2,6 +2,12 @@
 (function () {
   if (typeof window === 'undefined') return;
 
+  // supabase-auth.js exposes the client through a readiness promise. Publish it
+  // under the shared name used by the registration/approval modules.
+  if (window.LFS_SUPABASE_READY) {
+    window.LFS_SUPABASE_READY.then(sb => { window.LFS_SUPABASE = sb; }).catch(() => {});
+  }
+
   function client() {
     if (!window.LFS_SUPABASE) throw new Error('Supabase client is not initialized.');
     return window.LFS_SUPABASE;
