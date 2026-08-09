@@ -45,10 +45,12 @@
   }
 
   function friendlyAuthError(error) {
-    const message = String(error?.message || error || 'Login failed.');
+    const message = String(error?.message || error || 'Authentication failed.');
     if (/invalid login credentials/i.test(message)) return 'Incorrect email or password.';
     if (/email not confirmed/i.test(message)) return 'Please confirm your email before logging in.';
-    if (/too many requests/i.test(message)) return 'Too many login attempts. Please wait a moment and try again.';
+    if (/user already registered|already registered/i.test(message)) return 'An account with this email already exists.';
+    if (/too many requests/i.test(message)) return 'Too many attempts. Please wait a moment and try again.';
+    if (/password.*6 characters/i.test(message)) return 'Password must be at least 6 characters.';
     return message;
   }
 
@@ -68,7 +70,7 @@
 
     if (error) throw error;
     if (!profile) throw new Error('Your account profile was not found. Please contact the school administrator.');
-    if (!profile.is_active) throw new Error('Your account is inactive. Please contact the school administrator.');
+    if (!profile.is_active) throw new Error('Your account is awaiting school approval.');
     if (expectedRole && profile.role !== expectedRole) {
       throw new Error(`This account is registered as ${profile.role}, not ${expectedRole}. Please choose the correct login role.`);
     }
@@ -127,6 +129,48 @@
     }
   }
 
+  async function submitRegistration({ fullName, email, password, role, classSectionId = null, rollNumber = '', employeeId = '' }) {
+    const sb = await loadSupabase();
+    if (!fullName || !email || !password || !role) throw new Error('Please complete all required fields.');
+    if (!['student', 'teacher'].includes(role)) throw new Error('Only student and teacher registration is available.');
+    if (role === 'student' && !classSectionId) throw new Error('Please select your class and section.');
+
+    const { data, error } = await sb.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+          requested_role: role,
+          class_section_id: classSectionId || null,
+          roll_number: rollNumber || null,
+          employee_id: employeeId || null
+        }
+      }
+    });
+    if (error) throw error;
+    if (!data.user) throw new Error('Registration could not be completed.');
+
+    if (data.session) {
+      const { error: requestError } = await sb.from('registration_requests').insert({
+        auth_user_id: data.user.id,
+        full_name: fullName,
+        email,
+        requested_role: role,
+        class_section_id: classSectionId || null,
+        roll_number: rollNumber || null,
+        employee_id: employeeId || null
+      });
+      if (requestError) throw requestError;
+      await sb.auth.signOut();
+    }
+
+    return {
+      user: data.user,
+      requiresEmailConfirmation: !data.session
+    };
+  }
+
   async function realLogout() {
     try {
       const sb = await loadSupabase();
@@ -174,6 +218,7 @@
     if (pass) pass.autocomplete = 'current-password';
   }
 
+  window.LFS_REGISTER = submitRegistration;
   window.doLogin = realLogin;
   window.doLogout = realLogout;
 
