@@ -10,7 +10,7 @@
   async function getPendingRegistrationRequests() {
     const { data, error } = await client()
       .from('registration_requests')
-      .select('*')
+      .select(`*, class_sections(id, section, stream, subject_combination, academic_year, class_teacher_id, classes(name))`)
       .eq('status', 'pending')
       .order('created_at', { ascending: true });
     if (error) throw error;
@@ -50,10 +50,33 @@
     return data;
   }
 
+  async function routeRegistrationRequest(request) {
+    if (!request?.id) throw new Error('Registration request is required.');
+    const role = request.requested_role;
+
+    if (role === 'teacher') {
+      const { data: admins, error } = await client()
+        .from('profiles')
+        .select('id')
+        .eq('role', 'admin')
+        .eq('is_active', true);
+      if (error) throw error;
+      return (admins || []).map(a => a.id);
+    }
+
+    if (role === 'student') {
+      const classTeacherId = request.class_sections?.class_teacher_id;
+      return classTeacherId ? [classTeacherId] : [];
+    }
+
+    return [];
+  }
+
   window.LFS_APPROVAL = {
     getPendingRegistrationRequests,
     getMyNotifications,
     markNotificationRead,
-    reviewRegistrationRequest
+    reviewRegistrationRequest,
+    routeRegistrationRequest
   };
 })();
