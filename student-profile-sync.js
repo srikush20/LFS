@@ -83,9 +83,6 @@
         : '';
       const subtitle = [classText, rollText].filter(Boolean).join(' · ');
 
-      // Update the actual student dashboard, using the same .greet structure
-      // already used by supabase-auth.js, but without depending on a specific
-      // HTML id being present during the first render.
       const roots = [
         document.getElementById('dash-student'),
         ...document.querySelectorAll('.screen')
@@ -103,7 +100,6 @@
         if (sub && subtitle) sub.textContent = subtitle;
       });
 
-      // Also correct the profile panel, if it is visible.
       const pfName = document.getElementById('pfName');
       if (pfName) pfName.textContent = name;
     } finally {
@@ -126,10 +122,23 @@
     return cached;
   };
 
+  // The original index.html contains a demo setProfileFor(role) function that
+  // writes Ananya Singh / Class VIII / Roll 14 after login. Wrap it so the
+  // existing login flow stays intact while the student's real Supabase data
+  // is applied immediately afterward.
+  const originalSetProfileFor = window.setProfileFor;
+  if (typeof originalSetProfileFor === 'function') {
+    window.setProfileFor = function (role) {
+      const result = originalSetProfileFor.apply(this, arguments);
+      if (role === 'student') {
+        [0, 50, 250, 750].forEach(ms => setTimeout(sync, ms));
+      }
+      return result;
+    };
+  }
+
   function start() {
     sync();
-    // The main authentication/router can render the dashboard after this
-    // script runs, so re-apply after those transitions as well.
     [100, 400, 1000, 2000, 4000].forEach(ms => setTimeout(sync, ms));
 
     const observer = new MutationObserver(() => {
