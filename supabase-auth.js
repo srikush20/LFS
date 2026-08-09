@@ -257,30 +257,54 @@
     modal.addEventListener('click', e => { if (e.target === modal) closeRegistration(); });
   }
 
-  async function loadRegistrationClasses() {
-    const select = document.getElementById('lfs-reg-class');
-    if (!select) return;
-    try {
-      const sb = await loadSupabase();
-      const { data, error } = await sb.from('class_sections')
-        .select('id, section, stream, subject_combination, academic_year, classes(name)')
-        .order('id');
-      if (error) throw error;
-      select.innerHTML = '<option value="">Select class & section</option>';
-      (data || []).forEach(row => {
-        const className = row.classes?.name || 'Class';
-        const details = [row.section, row.stream, row.subject_combination].filter(Boolean).join(' • ');
-        const option = document.createElement('option');
-        option.value = row.id;
-        option.textContent = details ? `${className} — ${details}` : className;
-        select.appendChild(option);
-      });
-      if (!data?.length) select.innerHTML = '<option value="">No classes available</option>';
-    } catch (error) {
-      console.error('LFS class loading error:', error);
-      select.innerHTML = '<option value="">Could not load classes</option>';
+ async function loadRegistrationClasses() {
+  const select = document.getElementById('lfs-reg-class');
+  if (!select) return;
+
+  try {
+    const sb = await loadSupabase();
+
+    const { data, error } = await sb.rpc(
+      'get_registration_class_sections'
+    );
+
+    if (error) throw error;
+
+    const rows = data || [];
+
+    select.innerHTML =
+      '<option value="">Select class & section</option>';
+
+    rows.forEach(row => {
+      const details = [
+        row.section,
+        row.stream,
+        row.subject_combination
+      ].filter(Boolean).join(' • ');
+
+      const option = document.createElement('option');
+
+      option.value = row.id;
+
+      option.textContent = details
+        ? `${row.class_name} — ${details}`
+        : row.class_name;
+
+      select.appendChild(option);
+    });
+
+    if (!rows.length) {
+      select.innerHTML =
+        '<option value="">No classes available</option>';
     }
+
+  } catch (error) {
+    console.error('LFS class loading error:', error);
+
+    select.innerHTML =
+      '<option value="">Could not load classes</option>';
   }
+}
 
   function updateRegistrationRole() {
     const role = document.getElementById('lfs-reg-role')?.value;
