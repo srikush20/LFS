@@ -3,16 +3,39 @@
 (function () {
   'use strict';
 
+  const SUPABASE_URL = 'https://jzclpttnvaycutglohcu.supabase.co';
+  const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_d-0ikMYsdmDKILP45TdI1Q_jhmjtxRt';
+
+  let client = null;
   let retryTimer = null;
   let observer = null;
   let lastGoodCount = 0;
 
+  async function getClient() {
+    if (window.LFS_SUPABASE_READY) {
+      try {
+        return await window.LFS_SUPABASE_READY();
+      } catch (_) {}
+    }
+
+    if (client) return client;
+
+    if (window.supabase && typeof window.supabase.createClient === 'function') {
+      client = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+      });
+      return client;
+    }
+
+    throw new Error('Supabase library is not ready yet.');
+  }
+
   async function loadClasses() {
     const select = document.getElementById('lfs-reg-class');
-    if (!select || !window.LFS_SUPABASE_READY) return false;
+    if (!select) return false;
 
     try {
-      const sb = await window.LFS_SUPABASE_READY();
+      const sb = await getClient();
       const { data, error } = await sb.rpc('get_registration_class_sections');
       if (error) throw error;
 
@@ -40,7 +63,7 @@
     const run = async () => {
       attempts += 1;
       const ok = await loadClasses();
-      if (!ok && attempts < 10) retryTimer = setTimeout(run, 300);
+      if (!ok && attempts < 20) retryTimer = setTimeout(run, 500);
     };
     run();
   }
@@ -52,8 +75,6 @@
       const select = document.getElementById('lfs-reg-class');
       if (!modal?.classList.contains('show') || !select) return;
 
-      // The legacy loader can overwrite the select after our RPC succeeds.
-      // If that happens, restore the secure list immediately.
       if (lastGoodCount > 0 && (select.options.length <= 1 || /Could not load classes|Loading classes/i.test(select.options[0]?.textContent || ''))) {
         refreshRegistrationClasses();
       }
