@@ -106,9 +106,14 @@
       const selects = [...document.querySelectorAll('#lfs-ct-list select')];
       for (const select of selects) {
         const id = Number(select.dataset.sectionId);
-        const teacherId = select.value ? select.value : null;
-        const { error } = await sb.from('class_sections').update({ class_teacher_id: teacherId }).eq('id', id);
-        if (error) throw error;
+        const teacherId = select.value || null;
+        if (teacherId) {
+          const { error } = await sb.rpc('assign_class_teacher', {
+            p_class_section_id: id,
+            p_teacher_id: teacherId
+          });
+          if (error) throw error;
+        }
       }
       close();
       if (typeof window.toast === 'function') window.toast('Class teacher assignments saved.');
