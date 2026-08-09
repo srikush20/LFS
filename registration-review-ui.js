@@ -2,6 +2,12 @@
 (function () {
   if (typeof window === 'undefined') return;
 
+  // supabase-auth.js exposes the client through a readiness promise. Publish it
+  // under the shared name used by the registration/approval modules.
+  if (window.LFS_SUPABASE_READY) {
+    window.LFS_SUPABASE_READY.then(sb => { window.LFS_SUPABASE = sb; }).catch(() => {});
+  }
+
   function client() {
     if (!window.LFS_SUPABASE) throw new Error('Supabase client is not initialized.');
     return window.LFS_SUPABASE;
@@ -92,16 +98,10 @@
 
   function interceptStudentManagementClick(e) {
     let target = e.target.closest('[data-detail="studentmgmt"]');
-
-    // Fallback for the existing Admin UI: some versions of the large HTML do not
-    // expose the student-management item with a data-detail attribute.
     if (!target) {
       const candidate = e.target.closest('.list-row, .mini-card, button, a, [role="button"]');
-      if (candidate && /student\s+management/i.test(candidate.textContent || '')) {
-        target = candidate;
-      }
+      if (candidate && /student\s+management/i.test(candidate.textContent || '')) target = candidate;
     }
-
     if (!target) return;
     e.preventDefault();
     e.stopPropagation();
@@ -115,10 +115,8 @@
   async function renderRegistrationReviewPanel() {
     const profile = await currentProfile();
     if (!profile || !['admin', 'teacher'].includes(profile.role)) return;
-
     const requests = await window.LFS_APPROVAL.getPendingRegistrationRequests();
     const notifications = await window.LFS_APPROVAL.getMyNotifications();
-
     let panel = document.getElementById('lfs-registration-review-panel');
     if (!panel) {
       panel = document.createElement('section');
@@ -126,12 +124,10 @@
       panel.style.cssText = 'position:fixed;right:20px;bottom:20px;width:min(460px,calc(100vw - 40px));max-height:75vh;overflow:auto;z-index:99999;background:#fff;border:1px solid #dbe3ef;border-radius:16px;box-shadow:0 12px 40px rgba(15,23,42,.2);padding:18px;font-family:Arial,sans-serif;';
       document.body.appendChild(panel);
     }
-
     const allowed = requests.filter(r => {
       if (profile.role === 'admin') return true;
       return r.requested_role === 'student' && r.class_sections?.class_teacher_id === profile.id;
     });
-
     panel.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px">
         <div><strong style="font-size:18px">Registration Requests</strong><div style="font-size:12px;color:#64748b">${allowed.length} pending · ${notifications.filter(n=>!n.is_read).length} unread</div></div>
@@ -150,7 +146,6 @@
       <div style="margin-top:14px;font-size:12px;color:#64748b">Notifications</div>
       ${notifications.slice(0,5).map(n=>`<div data-notification="${n.id}" style="padding:8px 0;border-bottom:1px solid #f1f5f9;${n.is_read?'':'font-weight:700'}">${esc(n.title)}<br><span style="font-weight:400">${esc(n.message)}</span></div>`).join('')}
     `;
-
     document.getElementById('lfs-review-close').onclick = () => panel.remove();
     panel.querySelectorAll('[data-approve]').forEach(btn => btn.onclick = async () => {
       btn.disabled = true;
@@ -178,25 +173,13 @@
     return channel;
   }
 
-  window.LFS_REGISTRATION_REVIEW = {
-    render: renderRegistrationReviewPanel,
-    renderStudentManagement,
-    subscribeRealtime
-  };
-
+  window.LFS_REGISTRATION_REVIEW = { render: renderRegistrationReviewPanel, renderStudentManagement, subscribeRealtime };
   document.addEventListener('click', interceptStudentManagementClick, true);
-
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-      setTimeout(() => {
-        renderRegistrationReviewPanel().catch(() => {});
-        try { subscribeRealtime(); } catch (_) {}
-      }, 500);
+      setTimeout(() => { renderRegistrationReviewPanel().catch(() => {}); try { subscribeRealtime(); } catch (_) {} }, 500);
     });
   } else {
-    setTimeout(() => {
-      renderRegistrationReviewPanel().catch(() => {});
-      try { subscribeRealtime(); } catch (_) {}
-    }, 500);
+    setTimeout(() => { renderRegistrationReviewPanel().catch(() => {}); try { subscribeRealtime(); } catch (_) {} }, 500);
   }
 })();
