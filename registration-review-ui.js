@@ -72,5 +72,35 @@
     });
   }
 
-  window.LFS_REGISTRATION_REVIEW = { render: renderRegistrationReviewPanel };
+  function subscribeRealtime() {
+    const sb = client();
+    const channel = sb.channel('lfs-registration-notifications')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, async () => {
+        try { await renderRegistrationReviewPanel(); } catch (e) { console.error('LFS realtime notification refresh failed:', e); }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'registration_requests' }, async () => {
+        try { await renderRegistrationReviewPanel(); } catch (e) { console.error('LFS realtime request refresh failed:', e); }
+      })
+      .subscribe();
+    return channel;
+  }
+
+  window.LFS_REGISTRATION_REVIEW = {
+    render: renderRegistrationReviewPanel,
+    subscribeRealtime
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        renderRegistrationReviewPanel().catch(() => {});
+        try { subscribeRealtime(); } catch (_) {}
+      }, 500);
+    });
+  } else {
+    setTimeout(() => {
+      renderRegistrationReviewPanel().catch(() => {});
+      try { subscribeRealtime(); } catch (_) {}
+    }, 500);
+  }
 })();
