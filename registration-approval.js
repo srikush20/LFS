@@ -36,11 +36,10 @@
 
   async function reviewRegistrationRequest(requestId, decision, rejectionReason) {
     if (!requestId) throw new Error('Registration request ID is required.');
-    if (!['approved', 'rejected'].includes(decision)) {
-      throw new Error('Invalid registration decision.');
+    if (!['approve', 'reject'].includes(decision)) {
+      throw new Error('Invalid registration action.');
     }
 
-    // The live Postgres function uses p_action as its decision argument.
     const { data, error } = await client().rpc('review_registration_request', {
       p_request_id: requestId,
       p_action: decision,
