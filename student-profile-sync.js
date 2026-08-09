@@ -1,6 +1,6 @@
 /* LFS — Real Student Dashboard Profile Sync
    Loads the authenticated student's real profile/class data and keeps the
-   student dashboard from falling back to demo identity values.
+   student dashboard, profile card, and digital ID from falling back to demo identity values.
 */
 (function () {
   'use strict';
@@ -70,6 +70,10 @@
     return cached;
   }
 
+  function initials(name) {
+    return String(name || 'Student').trim().split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase();
+  }
+
   function applyStudentData(data) {
     if (!data || applying) return;
     applying = true;
@@ -82,6 +86,7 @@
         ? `Roll No. ${data.assignment.roll_number}`
         : '';
       const subtitle = [classText, rollText].filter(Boolean).join(' · ');
+      const avatar = initials(name);
 
       const roots = [
         document.getElementById('dash-student'),
@@ -96,12 +101,18 @@
         if (!greet) return;
         const heading = greet.querySelector('h2');
         const sub = greet.querySelector('p');
+        const av = greet.querySelector('.avatar');
         if (heading) heading.textContent = `Hi, ${name}`;
         if (sub && subtitle) sub.textContent = subtitle;
+        if (av) av.textContent = avatar;
       });
 
       const pfName = document.getElementById('pfName');
+      const pfRole = document.getElementById('pfRole');
+      const pfAvatar = document.getElementById('pfAvatar');
       if (pfName) pfName.textContent = name;
+      if (pfRole) pfRole.textContent = `Student${classText ? ' · ' + classText : ''}`;
+      if (pfAvatar) pfAvatar.textContent = avatar;
     } finally {
       applying = false;
     }
@@ -122,10 +133,6 @@
     return cached;
   };
 
-  // The original index.html contains a demo setProfileFor(role) function that
-  // writes Ananya Singh / Class VIII / Roll 14 after login. Wrap it so the
-  // existing login flow stays intact while the student's real Supabase data
-  // is applied immediately afterward.
   const originalSetProfileFor = window.setProfileFor;
   if (typeof originalSetProfileFor === 'function') {
     window.setProfileFor = function (role) {
@@ -133,6 +140,28 @@
       if (role === 'student') {
         [0, 50, 250, 750].forEach(ms => setTimeout(sync, ms));
       }
+      return result;
+    };
+  }
+
+  const originalShowIdCard = window.showIdCard;
+  if (typeof originalShowIdCard === 'function') {
+    window.showIdCard = function () {
+      const result = originalShowIdCard.apply(this, arguments);
+      setTimeout(() => {
+        if (!cached) return;
+        const idCard = document.querySelector('#sheetBody .idcard');
+        if (!idCard) return;
+        const body2 = idCard.querySelector('.body2');
+        const nameEl = body2?.querySelector('b');
+        const infoEl = body2?.querySelector('span');
+        if (nameEl) nameEl.textContent = cached.name;
+        const classText = cached.className
+          ? `Class ${cached.className}${cached.section ? ' · ' + cached.section : ''}`
+          : '';
+        const rollText = cached.assignment?.roll_number != null ? `Roll No. ${cached.assignment.roll_number}` : '';
+        if (infoEl) infoEl.textContent = [classText, rollText].filter(Boolean).join(' · ');
+      }, 0);
       return result;
     };
   }
