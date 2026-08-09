@@ -4,6 +4,8 @@
   'use strict';
 
   let retryTimer = null;
+  let observer = null;
+  let lastGoodCount = 0;
 
   async function loadClasses() {
     const select = document.getElementById('lfs-reg-class');
@@ -14,8 +16,9 @@
       const { data, error } = await sb.rpc('get_registration_class_sections');
       if (error) throw error;
 
+      const rows = data || [];
       select.innerHTML = '<option value="">Select class & section</option>';
-      (data || []).forEach(row => {
+      rows.forEach(row => {
         const details = [row.section, row.stream, row.subject_combination].filter(Boolean).join(' • ');
         const option = document.createElement('option');
         option.value = row.id;
@@ -23,10 +26,8 @@
         select.appendChild(option);
       });
 
-      if (!data || data.length === 0) {
-        select.innerHTML = '<option value="">No classes available</option>';
-      }
-      return true;
+      if (rows.length) lastGoodCount = rows.length;
+      return rows.length > 0;
     } catch (error) {
       console.error('LFS registration class RPC error:', error);
       return false;
@@ -39,17 +40,25 @@
     const run = async () => {
       attempts += 1;
       const ok = await loadClasses();
-      if (!ok && attempts < 5) retryTimer = setTimeout(run, 300);
+      if (!ok && attempts < 10) retryTimer = setTimeout(run, 300);
     };
     run();
   }
 
   function watchRegistrationModal() {
-    const observer = new MutationObserver(() => {
+    if (observer) observer.disconnect();
+    observer = new MutationObserver(() => {
       const modal = document.getElementById('lfs-register-modal');
-      if (modal?.classList.contains('show')) refreshRegistrationClasses();
+      const select = document.getElementById('lfs-reg-class');
+      if (!modal?.classList.contains('show') || !select) return;
+
+      // The legacy loader can overwrite the select after our RPC succeeds.
+      // If that happens, restore the secure list immediately.
+      if (lastGoodCount > 0 && (select.options.length <= 1 || /Could not load classes|Loading classes/i.test(select.options[0]?.textContent || ''))) {
+        refreshRegistrationClasses();
+      }
     });
-    observer.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class'] });
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
 
     const modal = document.getElementById('lfs-register-modal');
     if (modal?.classList.contains('show')) refreshRegistrationClasses();
