@@ -1,9 +1,12 @@
 /* LFS — Real Student Dashboard Profile Sync
-   Loads the authenticated student's profile and class assignment from Supabase.
-   Uses the existing LFS Supabase client readiness promise.
+   Loads the authenticated student's real profile/class data and keeps the
+   student dashboard from falling back to demo identity values.
 */
 (function () {
   'use strict';
+
+  let cached = null;
+  let applying = false;
 
   async function getClient() {
     if (window.LFS_SUPABASE_READY) return await window.LFS_SUPABASE_READY;
@@ -11,11 +14,11 @@
     throw new Error('Supabase client is not initialized.');
   }
 
-  async function loadStudentDashboardProfile() {
+  async function readStudentData() {
     const sb = await getClient();
     const { data: { user }, error: userError } = await sb.auth.getUser();
     if (userError) throw userError;
-    if (!user) return;
+    if (!user) return null;
 
     const { data: profile, error: profileError } = await sb
       .from('profiles')
@@ -23,7 +26,7 @@
       .eq('id', user.id)
       .maybeSingle();
     if (profileError) throw profileError;
-    if (!profile || profile.role !== 'student') return;
+    if (!profile || profile.role !== 'student' || !profile.is_active) return null;
 
     const { data: student, error: studentError } = await sb
       .from('students')
@@ -31,7 +34,7 @@
       .eq('profile_id', user.id)
       .maybeSingle();
     if (studentError) throw studentError;
-    if (!student) return;
+    if (!student) return null;
 
     const { data: assignment, error: assignmentError } = await sb
       .from('student_class_assignments')
@@ -42,7 +45,8 @@
       .maybeSingle();
     if (assignmentError) throw assignmentError;
 
-    let classLabel = '';
+    let className = '';
+    let section = '';
     if (assignment?.class_section_id != null) {
       const { data: classRow, error: classError } = await sb
         .from('classes')
@@ -50,43 +54,95 @@
         .eq('id', assignment.class_section_id)
         .maybeSingle();
       if (classError) throw classError;
-      if (classRow) classLabel = `${classRow.name || ''}${classRow.section ? ' · ' + classRow.section : ''}`.trim();
+      className = classRow?.name || '';
+      section = classRow?.section || '';
     }
 
-    const name = profile.full_name || user.email?.split('@')[0] || 'Student';
-    const dash = document.getElementById('dash-student');
-    if (!dash) return;
-
-    const greeting = dash.querySelector('.greet h2');
-    if (greeting) greeting.textContent = `Hi, ${name}`;
-
-    const greetSub = dash.querySelector('.greet p');
-    if (greetSub) {
-      const parts = [];
-      if (classLabel) parts.push(`Class ${classLabel}`);
-      if (assignment?.roll_number != null && assignment.roll_number !== '') parts.push(`Roll No. ${assignment.roll_number}`);
-      greetSub.textContent = parts.join(' · ');
-    }
-
-    window.LFS_CURRENT_STUDENT = {
+    cached = {
       profile,
       student,
       assignment,
-      classLabel
+      className,
+      section,
+      name: profile.full_name || user.email?.split('@')[0] || 'Student'
     };
+    window.LFS_CURRENT_STUDENT = cached;
+    return cached;
   }
 
-  window.LFS_LOAD_STUDENT_PROFILE = loadStudentDashboardProfile;
+  function applyStudentData(data) {
+    if (!data || applying) return;
+    applying = true;
+    try {
+      const name = data.name;
+      const classText = data.className
+        ? `Class ${data.className}${data.section ? ' · ' + data.section : ''}`
+        : '';
+      const rollText = data.assignment?.roll_number != null && data.assignment.roll_number !== ''
+        ? `Roll No. ${data.assignment.roll_number}`
+        : '';
+      const subtitle = [classText, rollText].filter(Boolean).join(' · ');
 
-  function run() {
-    loadStudentDashboardProfile().catch(error => {
+      // Update the actual student dashboard, using the same .greet structure
+      // already used by supabase-auth.js, but without depending on a specific
+      // HTML id being present during the first render.
+      const roots = [
+        document.getElementById('dash-student'),
+        ...document.querySelectorAll('.screen')
+      ].filter(Boolean);
+
+      const seen = new Set();
+      roots.forEach(root => {
+        if (seen.has(root)) return;
+        seen.add(root);
+        const greet = root.querySelector('.greet');
+        if (!greet) return;
+        const heading = greet.querySelector('h2');
+        const sub = greet.querySelector('p');
+        if (heading) heading.textContent = `Hi, ${name}`;
+        if (sub && subtitle) sub.textContent = subtitle;
+      });
+
+      // Also correct the profile panel, if it is visible.
+      const pfName = document.getElementById('pfName');
+      if (pfName) pfName.textContent = name;
+    } finally {
+      applying = false;
+    }
+  }
+
+  async function sync() {
+    try {
+      const data = cached || await readStudentData();
+      applyStudentData(data);
+    } catch (error) {
       console.error('LFS student dashboard sync error:', error);
+    }
+  }
+
+  window.LFS_LOAD_STUDENT_PROFILE = async function () {
+    cached = await readStudentData();
+    applyStudentData(cached);
+    return cached;
+  };
+
+  function start() {
+    sync();
+    // The main authentication/router can render the dashboard after this
+    // script runs, so re-apply after those transitions as well.
+    [100, 400, 1000, 2000, 4000].forEach(ms => setTimeout(sync, ms));
+
+    const observer = new MutationObserver(() => {
+      if (cached) applyStudentData(cached);
     });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+    window.addEventListener('lfs:student-dashboard-ready', sync);
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', run, { once: true });
+    document.addEventListener('DOMContentLoaded', start, { once: true });
   } else {
-    run();
+    start();
   }
 })();
