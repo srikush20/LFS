@@ -108,10 +108,10 @@
     console.log('[LFS Student Sync] Starting student data read...');
 
     const { data: { user } = {}, error: userError } = await sb.auth.getUser();
-    if (userError) {
-      console.error('[LFS Student Sync] Auth Query Error:', userError.message, userError.details, userError.hint);
-      return null;
-    }
+if (!session) {
+    console.log('[LFS Student Sync] No active student session — skipping sync.');
+    return null;
+}
 
     if (!user) {
       console.warn('[LFS Student Sync] No authenticated user/session found.');
