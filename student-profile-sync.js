@@ -17,7 +17,6 @@
   async function readStudentData() {
     const sb = await getClient();
     const { data: { user }, error: userError } = await sb.auth.getUser();
-const { data: { user }, error: userError } = await sb.auth.getUser();
 
 if (userError) {
     if (
