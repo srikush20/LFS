@@ -17,8 +17,20 @@
   async function readStudentData() {
     const sb = await getClient();
     const { data: { user }, error: userError } = await sb.auth.getUser();
-    if (userError) throw userError;
-    if (!user) return null;
+const { data: { user }, error: userError } = await sb.auth.getUser();
+
+if (userError) {
+    if (
+        userError.name === 'AuthSessionMissingError' ||
+        userError.message?.toLowerCase().includes('auth session missing')
+    ) {
+        return null;
+    }
+
+    throw userError;
+}
+
+if (!user) return null;
 
     const { data: profile, error: profileError } = await sb
       .from('profiles')
