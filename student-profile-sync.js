@@ -83,7 +83,11 @@
       if (sub) sub.textContent = subtitle;
       if (av) av.textContent = avatar;
     }
+const dashName = document.getElementById('dash-student-name');
+const dashInfo = document.getElementById('dash-student-info');
 
+if (dashName) dashName.textContent = name;
+if (dashInfo) dashInfo.textContent = subtitle;
     const pfName = document.getElementById('pfName');
     const pfRole = document.getElementById('pfRole');
     const pfAvatar = document.getElementById('pfAvatar');
