@@ -47,7 +47,6 @@
       if (avatar) avatar.textContent = '--';
     }
 
-    // Do not overwrite admin/teacher profile cards.
     const role = window.LFS_CURRENT_PROFILE?.role;
     if (role && role !== 'student') return;
 
@@ -75,7 +74,6 @@
     const subtitle = [classText, rollText].filter(Boolean).join(' · ') || 'Class not assigned';
     const avatar = initials(name);
 
-    // CRITICAL: only update the student dashboard.
     const greet = getStudentGreeting();
     if (greet) {
       const heading = greet.querySelector('h2');
@@ -107,14 +105,17 @@
     const sb = await getClient();
     console.log('[LFS Student Sync] Starting student data read...');
 
-    const { data: { user } = {}, error: userError } = await sb.auth.getUser();
-if (!session) {
-    console.log('[LFS Student Sync] No active student session — skipping sync.');
-    return null;
-}
+    const { data: { session } = {}, error: sessionError } = await sb.auth.getSession();
+
+    if (sessionError) {
+      console.warn('[LFS Student Sync] Auth session query failed; skipping until authentication is available:', sessionError.message);
+      return null;
+    }
+
+    const user = session?.user;
 
     if (!user) {
-      console.warn('[LFS Student Sync] No authenticated user/session found.');
+      console.log('[LFS Student Sync] No active session — skipping student sync.');
       return null;
     }
 
@@ -136,7 +137,6 @@ if (!session) {
       return null;
     }
 
-    // This is a STUDENT-only synchronizer. Admin/teacher data belongs to auth routing.
     if (profile.role !== 'student' || !profile.is_active) {
       console.log('[LFS Student Sync] Skipping non-student/inactive profile:', {
         role: profile.role,
@@ -158,7 +158,6 @@ if (!session) {
 
     console.log('[LFS Student Sync] Profile loaded:', partial.name);
 
-    // Actual schema: students.id is also profiles.id/auth.users.id.
     const { data: student, error: studentError } = await sb
       .from('students')
       .select('id, admission_number')
@@ -247,7 +246,6 @@ if (!session) {
         applyStudentData(cached);
       } else {
         window.LFS_CURRENT_STUDENT = null;
-        // Only reset student-owned UI. Never touch admin/teacher screens.
         neutralStudentUI();
       }
       return cached;
