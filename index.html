@@ -1135,11 +1135,20 @@ function openMaps(){
 /* ============================================================
    TOAST
 ============================================================ */
-let toastTimer=null;
+let toastTimer = null;
+
 function toast(msg){
   const box = document.getElementById('toastMsg');
-  document.getElementById('toastText').textContent = msg;
+  const text = document.getElementById('toastText');
+
+  text.textContent = msg;
   box.classList.add('show');
+
+  clearTimeout(toastTimer);
+
+  toastTimer = setTimeout(() => {
+    box.classList.remove('show');
+  }, 2500);
 }
 </script>
   <script src="supabase-auth.js"></script>
