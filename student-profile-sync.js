@@ -4,6 +4,9 @@
    students.id -> student_class_assignments.student_id
    student_class_assignments.class_section_id -> class_sections.id
    class_sections.class_id -> classes.id
+
+   IMPORTANT: this file owns ONLY student-specific UI.
+   It must never overwrite teacher/admin dashboard greetings or profile data.
 */
 (function () {
   'use strict';
@@ -13,12 +16,8 @@
   let authListenerAttached = false;
 
   async function getClient() {
-    if (window.LFS_SUPABASE_READY) {
-      return await window.LFS_SUPABASE_READY;
-    }
-    if (window.LFS_SUPABASE_CLIENT) {
-      return window.LFS_SUPABASE_CLIENT;
-    }
+    if (window.LFS_SUPABASE_READY) return await window.LFS_SUPABASE_READY;
+    if (window.LFS_SUPABASE_CLIENT) return window.LFS_SUPABASE_CLIENT;
     throw new Error('Supabase client is not initialized.');
   }
 
@@ -33,26 +32,31 @@
       .toUpperCase() || 'ST';
   }
 
-  function neutralStudentUI() {
-    const name = 'Student';
-    const subtitle = 'Class not assigned';
-    const avatar = '--';
+  function getStudentGreeting() {
+    return document.querySelector('#dash-student .greet');
+  }
 
-    document.querySelectorAll('.screen .greet').forEach(greet => {
+  function neutralStudentUI() {
+    const greet = getStudentGreeting();
+    if (greet) {
       const heading = greet.querySelector('h2');
       const sub = greet.querySelector('p');
-      const av = greet.querySelector('.avatar');
-      if (heading) heading.textContent = `Hi, ${name}`;
-      if (sub) sub.textContent = subtitle;
-      if (av) av.textContent = avatar;
-    });
+      const avatar = greet.querySelector('.avatar');
+      if (heading) heading.textContent = 'Hi, Student';
+      if (sub) sub.textContent = 'Class not assigned';
+      if (avatar) avatar.textContent = '--';
+    }
+
+    // Do not overwrite admin/teacher profile cards.
+    const role = window.LFS_CURRENT_PROFILE?.role;
+    if (role && role !== 'student') return;
 
     const pfName = document.getElementById('pfName');
     const pfRole = document.getElementById('pfRole');
     const pfAvatar = document.getElementById('pfAvatar');
-    if (pfName) pfName.textContent = name;
+    if (pfName) pfName.textContent = 'Student';
     if (pfRole) pfRole.textContent = 'Student';
-    if (pfAvatar) pfAvatar.textContent = avatar;
+    if (pfAvatar) pfAvatar.textContent = '--';
   }
 
   function applyStudentData(data) {
@@ -71,14 +75,16 @@
     const subtitle = [classText, rollText].filter(Boolean).join(' · ') || 'Class not assigned';
     const avatar = initials(name);
 
-    document.querySelectorAll('.screen .greet').forEach(greet => {
+    // CRITICAL: only update the student dashboard.
+    const greet = getStudentGreeting();
+    if (greet) {
       const heading = greet.querySelector('h2');
       const sub = greet.querySelector('p');
       const av = greet.querySelector('.avatar');
       if (heading) heading.textContent = `Hi, ${name}`;
       if (sub) sub.textContent = subtitle;
       if (av) av.textContent = avatar;
-    });
+    }
 
     const pfName = document.getElementById('pfName');
     const pfRole = document.getElementById('pfRole');
@@ -101,7 +107,7 @@
     const sb = await getClient();
     console.log('[LFS Student Sync] Starting student data read...');
 
-    const { data: { user }, error: userError } = await sb.auth.getUser();
+    const { data: { user } = {}, error: userError } = await sb.auth.getUser();
     if (userError) {
       console.error('[LFS Student Sync] Auth Query Error:', userError.message, userError.details, userError.hint);
       return null;
@@ -130,13 +136,16 @@
       return null;
     }
 
+    // This is a STUDENT-only synchronizer. Admin/teacher data belongs to auth routing.
     if (profile.role !== 'student' || !profile.is_active) {
-      console.warn('[LFS Student Sync] Profile is not an active student:', {
+      console.log('[LFS Student Sync] Skipping non-student/inactive profile:', {
         role: profile.role,
         is_active: profile.is_active
       });
       return null;
     }
+
+    window.LFS_CURRENT_PROFILE = profile;
 
     const partial = {
       profile,
@@ -149,7 +158,7 @@
 
     console.log('[LFS Student Sync] Profile loaded:', partial.name);
 
-    // IMPORTANT: students.id is the profile/auth user id in the actual schema.
+    // Actual schema: students.id is also profiles.id/auth.users.id.
     const { data: student, error: studentError } = await sb
       .from('students')
       .select('id, admission_number')
@@ -238,6 +247,7 @@
         applyStudentData(cached);
       } else {
         window.LFS_CURRENT_STUDENT = null;
+        // Only reset student-owned UI. Never touch admin/teacher screens.
         neutralStudentUI();
       }
       return cached;
@@ -282,18 +292,22 @@
     try {
       const sb = await getClient();
       if (!sb?.auth?.onAuthStateChange) return;
+
       sb.auth.onAuthStateChange((event, session) => {
         console.log('[LFS Student Sync] Auth state changed:', event);
+
         if (!session?.user) {
           cached = null;
           window.LFS_CURRENT_STUDENT = null;
           neutralStudentUI();
           return;
         }
+
         if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION') {
           setTimeout(() => sync(true), 0);
         }
       });
+
       authListenerAttached = true;
     } catch (error) {
       console.error('[LFS Student Sync] Auth listener setup failed:', error);
@@ -308,7 +322,6 @@
     await attachAuthListener();
     await sync(false);
 
-    // Hooks can be defined after this script in some builds.
     setTimeout(attachHooks, 250);
     setTimeout(attachHooks, 1000);
   }
