@@ -14,73 +14,182 @@
     throw new Error('Supabase client is not initialized.');
   }
 
-  async function readStudentData() {
-    const sb = await getClient();
-    const { data: { user }, error: userError } = await sb.auth.getUser();
+async function readStudentData() {
+  console.log('[LFS Student Sync] Starting student data read...');
 
-if (userError) {
-    if (
-        userError.name === 'AuthSessionMissingError' ||
-        userError.message?.toLowerCase().includes('auth session missing')
-    ) {
-        return null;
-    }
+  let sb;
 
-    throw userError;
-}
-
-if (!user) return null;
-
-    const { data: profile, error: profileError } = await sb
-      .from('profiles')
-      .select('id, full_name, email, role, is_active')
-      .eq('id', user.id)
-      .maybeSingle();
-    if (profileError) throw profileError;
-    if (!profile || profile.role !== 'student' || !profile.is_active) return null;
-
-    const { data: student, error: studentError } = await sb
-      .from('students')
-      .select('id, admission_number')
-      .eq('profile_id', profile.id)
-      .maybeSingle();
-    if (studentError) throw studentError;
-    if (!student) return null;
-
-    const { data: assignment, error: assignmentError } = await sb
-      .from('student_class_assignments')
-      .select('id, class_section_id, roll_number, academic_year')
-      .eq('student_id', student.id)
-      .order('academic_year', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (assignmentError) throw assignmentError;
-
-    let className = '';
-    let section = '';
-    if (assignment?.class_section_id != null) {
-      const { data: classSection, error: classSectionError } = await sb
-        .from('class_sections')
-        .select('id, section, academic_year, classes(name)')
-        .eq('id', assignment.class_section_id)
-        .maybeSingle();
-      if (classSectionError) throw classSectionError;
-      className = classSection?.classes?.name || '';
-      section = classSection?.section || '';
-    }
-
-    cached = {
-      profile,
-      student,
-      assignment,
-      className,
-      section,
-      name: profile.full_name || user.email?.split('@')[0] || 'Student'
-    };
-    window.LFS_CURRENT_STUDENT = cached;
-    return cached;
+  try {
+    sb = await getClient();
+    console.log('[LFS Student Sync] Supabase client ready.');
+  } catch (error) {
+    console.warn('[LFS Student Sync] Supabase client unavailable:', error);
+    return null;
   }
 
+  const { data: { user }, error: userError } = await sb.auth.getUser();
+
+  if (userError) {
+    if (
+      userError.name === 'AuthSessionMissingError' ||
+      userError.message?.toLowerCase().includes('auth session missing')
+    ) {
+      console.warn(
+        '[LFS Student Sync] No Supabase auth session found. User is not logged in.'
+      );
+      return null;
+    }
+
+    console.error(
+      '[LFS Student Sync] Failed while getting authenticated user:',
+      userError
+    );
+    throw userError;
+  }
+
+  if (!user) {
+    console.warn('[LFS Student Sync] No authenticated user found.');
+    return null;
+  }
+
+  console.log('[LFS Student Sync] Authenticated user:', user.id);
+
+  const { data: profile, error: profileError } = await sb
+    .from('profiles')
+    .select('id, full_name, email, role, is_active')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (profileError) {
+    console.error(
+      '[LFS Student Sync] profiles query failed:',
+      profileError
+    );
+    throw profileError;
+  }
+
+  if (!profile) {
+    console.warn('[LFS Student Sync] Profile not found.');
+    return null;
+  }
+
+  if (profile.role !== 'student') {
+    console.warn(
+      '[LFS Student Sync] Profile is not a student. Role:',
+      profile.role
+    );
+    return null;
+  }
+
+  if (!profile.is_active) {
+    console.warn('[LFS Student Sync] Student profile is inactive.');
+    return null;
+  }
+
+  console.log('[LFS Student Sync] Student profile found:', profile.full_name);
+
+  const { data: student, error: studentError } = await sb
+    .from('students')
+    .select('id, admission_number')
+    .eq('profile_id', profile.id)
+    .maybeSingle();
+
+  if (studentError) {
+    console.error(
+      '[LFS Student Sync] students query failed:',
+      studentError
+    );
+    throw studentError;
+  }
+
+  if (!student) {
+    console.warn(
+      '[LFS Student Sync] No matching student record found for profile:',
+      profile.id
+    );
+    return null;
+  }
+
+  console.log('[LFS Student Sync] Student record found:', student.id);
+
+  const { data: assignment, error: assignmentError } = await sb
+    .from('student_class_assignments')
+    .select('id, class_section_id, roll_number, academic_year')
+    .eq('student_id', student.id)
+    .order('academic_year', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (assignmentError) {
+    console.error(
+      '[LFS Student Sync] student_class_assignments query failed:',
+      assignmentError
+    );
+    throw assignmentError;
+  }
+
+  if (!assignment) {
+    console.warn(
+      '[LFS Student Sync] No class assignment found for student:',
+      student.id
+    );
+  } else {
+    console.log(
+      '[LFS Student Sync] Class assignment found:',
+      assignment
+    );
+  }
+
+  let className = '';
+  let section = '';
+
+  if (assignment?.class_section_id != null) {
+    const { data: classSection, error: classSectionError } = await sb
+      .from('class_sections')
+      .select('id, section, academic_year, classes(name)')
+      .eq('id', assignment.class_section_id)
+      .maybeSingle();
+
+    if (classSectionError) {
+      console.error(
+        '[LFS Student Sync] class_sections query failed:',
+        classSectionError
+      );
+      throw classSectionError;
+    }
+
+    if (!classSection) {
+      console.warn(
+        '[LFS Student Sync] No matching class section found:',
+        assignment.class_section_id
+      );
+    } else {
+      className = classSection?.classes?.name || '';
+      section = classSection?.section || '';
+
+      console.log(
+        '[LFS Student Sync] Class section loaded:',
+        className,
+        section
+      );
+    }
+  }
+
+  cached = {
+    profile,
+    student,
+    assignment,
+    className,
+    section,
+    name: profile.full_name || user.email?.split('@')[0] || 'Student'
+  };
+
+  window.LFS_CURRENT_STUDENT = cached;
+
+  console.log('[LFS Student Sync] Student data loaded successfully:', cached);
+
+  return cached;
+}
   function initials(name) {
     return String(name || 'Student').trim().split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase();
   }
