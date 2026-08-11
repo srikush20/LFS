@@ -194,8 +194,84 @@ async function readStudentData() {
     return String(name || 'Student').trim().split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase();
   }
 
-  function applyStudentData(data) {
-    if (!data || applying) return;
+function applyStudentData(data) {
+  if (applying) return;
+
+  applying = true;
+
+  try {
+    if (!data) {
+      const nameEl = document.getElementById('dash-student-name');
+      const infoEl = document.getElementById('dash-student-info');
+      const avatarEl = document.getElementById('dash-student-avatar');
+
+      if (nameEl) nameEl.textContent = 'Student';
+      if (infoEl) infoEl.textContent = 'Class -- · Roll No. --';
+      if (avatarEl) avatarEl.textContent = '--';
+
+      console.log(
+        '[LFS Student Sync] No student data available. Dashboard reset to neutral placeholders.'
+      );
+
+      return;
+    }
+
+    const name = data.name;
+
+    const classText = data.className
+      ? `Class ${data.className}${data.section ? ' · ' + data.section : ''}`
+      : '';
+
+    const rollText =
+      data.assignment?.roll_number != null &&
+      data.assignment.roll_number !== ''
+        ? `Roll No. ${data.assignment.roll_number}`
+        : '';
+
+    const subtitle =
+      classText || rollText
+        ? [classText, rollText].filter(Boolean).join(' · ')
+        : 'Class not assigned';
+
+    const avatar = initials(name);
+
+    const nameEl = document.getElementById('dash-student-name');
+    const infoEl = document.getElementById('dash-student-info');
+    const avatarEl = document.getElementById('dash-student-avatar');
+
+    if (nameEl) nameEl.textContent = name;
+    if (infoEl) infoEl.textContent = subtitle;
+    if (avatarEl) avatarEl.textContent = avatar;
+
+    // Keep existing profile-card synchronization.
+    const pfName = document.getElementById('pfName');
+    const pfRole = document.getElementById('pfRole');
+    const pfAvatar = document.getElementById('pfAvatar');
+
+    if (pfName) pfName.textContent = name;
+    if (pfRole) {
+      pfRole.textContent =
+        `Student${classText ? ' · ' + classText : ''}`;
+    }
+    if (pfAvatar) pfAvatar.textContent = avatar;
+
+    // Keep existing digital ID synchronization.
+    if (window.LFS_CURRENT_STUDENT) {
+      const idCard = document.querySelector('#sheetBody .idcard');
+
+      if (idCard) {
+        const body2 = idCard.querySelector('.body2');
+        const nameEl2 = body2?.querySelector('b');
+        const infoEl2 = body2?.querySelector('span');
+
+        if (nameEl2) nameEl2.textContent = name;
+        if (infoEl2) infoEl2.textContent = subtitle;
+      }
+    }
+  } finally {
+    applying = false;
+  }
+}
     applying = true;
     try {
       const name = data.name;
