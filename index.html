@@ -1112,7 +1112,7 @@ function markAtt(btn){
   btn.classList.add('on');
 }
 function submitAttendance(){ closeSheet(); toast('Attendance saved'); }
-function showFeePay(){
+ showFeePay(){
   document.getElementById('sheetIcon').className = 'sic fa-solid fa-credit-card';
   document.getElementById('sheetTitle').textContent = 'Online Fee Payment';
   document.getElementById('sheetBody').innerHTML = `
@@ -1149,6 +1149,23 @@ function toast(msg){
   toastTimer = setTimeout(() => {
     box.classList.remove('show');
   }, 2500);
+}
+  function toggleTheme() {
+    const root = document.documentElement;
+    const isDark = root.classList.contains('dark');
+
+    root.classList.toggle('dark', !isDark);
+    localStorage.setItem('lfs-theme', !isDark ? 'dark' : 'light');
+
+    const themeBtn = document.getElementById('themeBtn');
+    if (themeBtn) {
+        const icon = themeBtn.querySelector('i');
+        if (icon) {
+            icon.className = !isDark
+                ? 'fa-solid fa-sun'
+                : 'fa-solid fa-moon';
+        }
+    }
 }
 </script>
   <script src="supabase-auth.js"></script>
