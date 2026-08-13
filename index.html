@@ -1151,6 +1151,16 @@ function toast(msg){
   }, 2500);
 }
 </script>
+   <!--toggle theme-->
+ <script>
+  function toggleTheme(){
+  document.documentElement.classList.toggle('dark');
+  const isDark = document.documentElement.classList.contains('dark');
+  document.getElementById('themeBtn').innerHTML = `<i class="fa-solid fa-${isDark?'sun':'moon'}"></i>`;
+  const sw = document.getElementById('switchDark');
+  if(sw) sw.classList.toggle('on', isDark);
+}
+ </script>
   <script src="supabase-auth.js"></script>
   <script src="registration-approval.js"></script>
   <script src="registration-review-ui.js"></script>
