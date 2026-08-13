@@ -1,0 +1,962 @@
+🏫 Little Flower School — How the LFS App Works
+
+Repository: `srikush20/LFS`
+
+Supabase project:
+
+Project ref: jzclpttnvaycutglohcu
+
+This is a vanilla HTML/CSS/JavaScript school-management web app using Supabase as the backend.
+
+The important thing to understand first:
+
+index.html is basically the entire frontend application.
+The other .js files provide backend integration and specific features.
+
+1. Overall architecture
+
+Think of the application like this:
+
+                    ┌───────────────────┐
+                    │    index.html     │
+                    │ UI + CSS + some JS│
+                    └─────────┬─────────┘
+                              │
+             ┌────────────────┼─────────────────┐
+             │                │                 │
+             ▼                ▼                 ▼
+       supabase-auth.js  student-profile-sync  Other modules
+             │                │                 │
+             └────────────────┼─────────────────┘
+                              ▼
+                     ┌─────────────────┐
+                     │    Supabase     │
+                     │                 │
+                     │ Auth            │
+                     │ profiles        │
+                     │ students        │
+                     │ assignments     │
+                     │ classes         │
+                     │ notices         │
+                     │ fees            │
+                     │ notifications   │
+                     │ etc.            │
+                     └─────────────────┘
+
+There are therefore three different things:
+
+Frontend
+
+index.html
+
+Contains:
+
+Home page
+Login screen
+Splash screen
+Student dashboard
+Teacher dashboard
+Admin dashboard
+Modals
+Buttons
+Cards
+Navigation
+CSS
+A lot of inline JavaScript
+Authentication/backend bridge
+
+supabase-auth.js
+
+Responsible for:
+
+Creating Supabase client
+Login
+Logout
+Registration
+Restoring sessions
+Loading profiles
+Routing users to the correct dashboard
+
+The current file creates the client using the Supabase project URL and a publishable browser key.
+
+Feature modules
+
+Examples:
+
+student-profile-sync.js
+registration-approval.js
+registration-review-ui.js
+registration-class-loader.js
+class-teacher-admin.js
+
+These modules communicate with Supabase and update the UI.
+
+2. Authentication flow
+
+This is probably the most important part of the project.
+
+When someone logs in:
+
+User enters email/password
+        ↓
+supabase.auth.signInWithPassword()
+        ↓
+Supabase Auth
+        ↓
+auth.users
+        ↓
+profiles
+        ↓
+Check role
+        ↓
+student / teacher / admin
+        ↓
+Open correct dashboard
+
+The authentication module calls:
+
+sb.auth.signInWithPassword({
+    email,
+    password
+});
+
+Then it loads the user's profile from:
+
+profiles
+
+using the authenticated user's ID.
+
+It checks:
+
+profile exists
+profile.is_active === true
+role is correct
+
+Then:
+
+window.LFS_CURRENT_PROFILE = profile;
+
+is set.
+
+Finally:
+
+goScreen('dash-' + profile.role);
+
+routes the user.
+
+This is implemented in supabase-auth.js.
+
+3. User roles
+
+There are currently three important roles:
+
+student
+teacher
+admin
+Student
+
+Gets:
+
+dash-student
+Teacher
+
+Gets:
+
+dash-teacher
+Admin
+
+Gets:
+
+dash-admin
+
+The role comes from the profiles.role field.
+
+4. Why profiles is important
+
+profiles is basically the application's identity table.
+
+For example:
+
+profiles
+--------------------------------
+id
+full_name
+email
+role
+is_active
+phone
+avatar_url
+...
+
+The critical relationship is:
+
+auth.users.id
+      =
+profiles.id
+
+So:
+
+Supabase Auth tells us who logged in.
+
+profiles tells us who that person is inside LFS.
+
+5. Student dashboard data flow
+
+This was one of the biggest things we fixed.
+
+The student dashboard does not just use a hardcoded name anymore.
+
+The intended relationship is:
+
+auth.users
+    │
+    ▼
+profiles
+    │
+    ▼
+students
+    │
+    ▼
+student_class_assignments
+    │
+    ▼
+class_sections
+    │
+    ▼
+classes
+
+The current student-profile-sync.js explicitly documents this relationship.
+
+Example
+
+Suppose:
+
+auth.users.id = ABC
+
+Then:
+
+profiles.id = ABC
+students.id = ABC
+
+Then:
+
+student_class_assignments.student_id = ABC
+
+Then:
+
+student_class_assignments.class_section_id
+        ↓
+class_sections.id
+
+Then:
+
+class_sections.class_id
+        ↓
+classes.id
+
+And finally we can obtain:
+
+Class 11
+Section A
+Roll 23
+6. How the student's name appears
+
+student-profile-sync.js gets:
+
+profile.full_name
+
+and eventually calls:
+
+applyStudentData(cached);
+
+The function updates:
+
+#dash-student-name
+#dash-student-info
+
+and also:
+
+pfName
+pfRole
+pfAvatar
+
+It also updates the digital ID card.
+
+So one database value can populate multiple UI locations.
+
+The current implementation does this in applyStudentData().
+
+7. Why we previously saw "Ananya Singh"
+
+Originally the student dashboard contained demo data like:
+
+Hi, Ananya Singh
+AS
+Class VIII · Roll No. 14
+
+That was hardcoded demo content.
+
+That was a major bug because:
+
+Kushagra logs in
+        ↓
+UI still says Ananya Singh
+
+We replaced those values with neutral placeholders and made the student sync overwrite them with real database data.
+
+That part is now working much better.
+
+8. Student sync fallback system
+
+This is important for debugging.
+
+If there is no session:
+
+No active session
+
+the module doesn't try to query student data.
+
+It displays:
+
+Hi, Student
+Class not assigned
+--
+
+If the profile exists but the students record doesn't:
+
+Name still comes from profiles
+
+If the class assignment doesn't exist:
+
+Name still appears
+Class not assigned
+
+This was deliberately done so one missing database relationship doesn't completely destroy the dashboard.
+
+The current code logs each stage and caches partial data.
+
+9. Supabase client problem we had
+
+We previously had:
+
+Supabase client is not initialized
+
+The reason was that different modules expected different global variables.
+
+We changed the authentication layer so the client is exposed through:
+
+window.LFS_SUPABASE_CLIENT
+window.LFS_SUPABASE
+window.LFS_SUPABASE_READY
+
+Student sync waits for:
+
+window.LFS_SUPABASE_READY
+
+before querying the database.
+
+This is why you should not randomly create another Supabase client in another JS file.
+
+Use the existing client.
+
+10. Registration system
+
+A student/teacher can create an account.
+
+The registration function calls:
+
+sb.auth.signUp(...)
+
+with metadata such as:
+
+full_name
+requested_role
+class_section_id
+roll_number
+employee_id
+
+The account is then supposed to go through approval.
+
+The intended architecture is:
+
+Register
+   ↓
+auth.users
+   ↓
+registration_requests
+   ↓
+pending
+   ↓
+Admin reviews
+   ↓
+Approve / Reject
+11. Registration approval
+
+registration-approval.js handles the database operations.
+
+It provides:
+
+getPendingRegistrationRequests()
+getMyNotifications()
+markNotificationRead()
+reviewRegistrationRequest()
+routeRegistrationRequest()
+
+The pending request query uses:
+
+registration_requests
+
+with:
+
+status = pending
+
+and joins:
+
+class_sections
+classes
+
+The approval operation uses the database RPC:
+
+review_registration_request
+
+rather than directly modifying several tables from the frontend.
+
+12. Admin approval UI
+
+registration-review-ui.js creates the admin/teacher registration-review interface dynamically.
+
+It:
+
+Checks the logged-in profile.
+Gets pending requests.
+Filters them based on role.
+Displays the request.
+Allows:
+Approve
+Reject
+Calls the approval RPC.
+Refreshes the UI.
+
+For students, teachers can see requests associated with their class, while admins can see all applicable requests.
+
+The module also subscribes to Supabase realtime changes on:
+
+notifications
+registration_requests
+
+so the UI can refresh when those tables change.
+
+13. Friend registration problem
+
+We had a situation where your friend's confirmed account wasn't appearing in Student Approval.
+
+The important distinction is:
+
+Email confirmed
+
+does NOT automatically mean:
+
+LFS approved
+
+There are separate layers:
+
+Supabase Auth account
+        ↓
+registration request
+        ↓
+school approval
+        ↓
+active profile
+        ↓
+student record
+
+We added a database trigger so new student/teacher Auth registrations can create a registration_requests row automatically.
+
+So if your friend registers correctly through the LFS registration UI, the expected path is:
+
+Auth user
+   ↓
+registration_requests
+   ↓
+pending
+   ↓
+Admin sees request
+14. Admin dashboard
+
+The admin dashboard is essentially another screen inside the same index.html.
+
+The role is:
+
+admin
+
+and authentication routes to:
+
+dash-admin
+
+The admin should eventually be the control center for:
+
+Students
+Teachers
+Classes
+Subjects
+Attendance
+Marks
+Fees
+Notices
+Exams
+Homework
+Approvals
+
+Some of these are currently real database features, while others still contain legacy/demo UI.
+
+That distinction is extremely important.
+
+15. Notices
+
+This is currently one of the unfinished areas.
+
+The old frontend contains demo structures such as:
+
+NOTICES[]
+
+and:
+
+CONTENT{}
+
+which means some screens can still show hardcoded/demo content instead of Supabase data.
+
+That is why you previously saw:
+
+Notice button works, but it shows demo/unrelated notices.
+
+The next proper implementation is:
+
+Admin creates notice
+       ↓
+notices table
+       ↓
+Student/Teacher query
+       ↓
+real notice cards
+
+Do not simply edit the demo NOTICES[] array.
+
+16. Fees
+
+Fees are another incomplete database-driven feature.
+
+The button/UI exists, but the full pipeline still needs to be connected:
+
+fees table
+      ↓
+student ID
+      ↓
+fee records
+      ↓
+student dashboard
+
+The frontend shouldn't contain fake fee amounts.
+
+17. Other modules
+
+The application has many modules that should eventually follow the same architecture:
+
+Attendance
+Marks
+Homework
+Exams
+Fees
+Notices
+Classes
+Teachers
+Subjects
+Student management
+
+The correct pattern is always:
+
+UI
+ ↓
+JS module
+ ↓
+Supabase query/RPC
+ ↓
+Database
+ ↓
+JS transforms result
+ ↓
+UI
+18. Splash screen
+
+This is the current visual regression we're handing over.
+
+The splash actually runs.
+
+The background/transition works.
+
+But the logo isn't visible.
+
+This is NOT currently an authentication problem.
+
+The known-good version had the LFS logo embedded directly as a Base64 image inside the splash .splash-badge.
+
+At some point the splash was changed to reference:
+
+logo.png
+
+even though the intended application is a single HTML file.
+
+Therefore:
+
+Splash JS       ✅
+Splash timing   ✅
+Splash screen   ✅
+Base64 logo     ⚠️ rendering/reference regression
+
+The friend should fix this without replacing the entire index.html.
+
+19. Why index.html is dangerous
+
+This is probably the most important developer warning.
+
+index.html is enormous and contains:
+
+HTML
+CSS
+JavaScript
+Base64 images
+demo data
+UI logic
+navigation logic
+
+all in one file.
+
+We've previously had accidental syntax problems such as:
+
+<script> without </script>
+
+and:
+
+missing }
+
+which caused errors like:
+
+Unexpected token 'async'
+
+and:
+
+JSX element script has no corresponding closing tag
+
+Those errors caused many apparently unrelated buttons to stop working.
+
+Therefore:
+
+Never replace the entire index.html just to fix one feature.
+
+Make a small change.
+
+Test.
+
+Then commit.
+
+20. Why some buttons stopped working
+
+Many of the buttons are controlled by JavaScript functions defined inside the giant index.html.
+
+If one syntax error occurs early in the script:
+
+JavaScript stops parsing
+        ↓
+functions below it don't exist
+        ↓
+buttons call undefined functions
+        ↓
+many buttons appear broken
+
+So:
+
+One syntax error can look like 20 different UI bugs.
+
+That's why we previously got stuck in the cycle:
+
+fix error
+ ↓
+another error
+ ↓
+fix another error
+ ↓
+buttons disappear
+ ↓
+fix buttons
+ ↓
+new syntax error
+
+The correct approach is to fix syntax first, then functionality.
+
+21. Debugging strategy for your friend
+
+Tell him to use this order:
+
+Step 1 — Console
+
+Open:
+
+F12 → Console
+
+Find the first red error.
+
+Ignore the 30 errors underneath it initially.
+
+Fix the first one.
+
+Reload.
+
+Step 2 — Syntax
+
+Before debugging Supabase:
+
+Check JS syntax
+
+If the browser says:
+
+Unexpected token
+Unexpected identifier
+Expected }
+Expected <
+Unexpected async
+
+don't touch the database.
+
+Fix JavaScript first.
+
+Step 3 — Authentication
+
+Check:
+
+auth.users
+
+Then:
+
+profiles
+
+Then:
+
+is_active
+role
+Step 4 — Student data
+
+Check:
+
+students
+student_class_assignments
+class_sections
+classes
+
+in that order.
+
+Step 5 — UI
+
+Only after the database query works:
+
+applyStudentData()
+
+should be investigated.
+
+22. Current student relationship
+
+The friend should memorize this:
+
+auth.users.id
+       │
+       ▼
+profiles.id
+       │
+       ▼
+students.id
+       │
+       ▼
+student_class_assignments.student_id
+       │
+       ▼
+class_sections.id
+       │
+       ▼
+classes.id
+
+If the student name works but class doesn't:
+
+profiles ✅
+students probably ✅
+assignment/class relationship ❌
+
+If even the name doesn't work:
+
+auth/profile/sync problem
+
+This makes debugging much easier.
+
+23. Current registration relationship
+auth.users
+     │
+     ▼
+registration_requests
+     │
+     ├── requested_role
+     ├── full_name
+     ├── email
+     ├── class_section_id
+     ├── roll_number
+     └── status
+             │
+             ▼
+       Admin approval
+             │
+       ┌─────┴─────┐
+       ▼           ▼
+   approved      rejected
+       │
+       ▼
+profiles/students/teacher workflow
+24. What NOT to do
+
+Tell your friend:
+
+❌ Don't hardcode users
+
+Don't do:
+
+const name = "Kushagra Srivastava";
+
+or:
+
+Hi, Ananya Singh
+❌ Don't create duplicate Supabase clients
+
+Use the existing client.
+
+❌ Don't put service-role keys in frontend code
+
+Only publishable/anon browser-safe keys belong in the frontend.
+
+❌ Don't replace index.html entirely
+
+Especially not with a generated version.
+
+❌ Don't fix database problems by changing random frontend queries
+
+First inspect the actual schema.
+
+❌ Don't trust demo arrays
+
+If something uses:
+
+NOTICES
+CONTENT
+demo
+sample
+
+assume it needs investigation before calling it a real backend feature.
+
+25. How the app should eventually look
+
+The final architecture should become:
+
+                   LFS APP
+                     │
+          ┌──────────┴──────────┐
+          │                     │
+       Frontend              Supabase
+          │                     │
+     index.html             Auth
+          │                 profiles
+          │                 students
+          │                 teachers
+          │                 classes
+          │                 subjects
+          │                 attendance
+          │                 marks
+          │                 fees
+          │                 notices
+          │                 homework
+          │                 exams
+          │                 notifications
+          │
+          ├── Student
+          ├── Teacher
+          └── Admin
+
+And eventually no demo data should be necessary.
+
+26. Development priority
+
+For your friend, I'd recommend this exact order:
+
+PHASE 1 — Stabilize
+├── Fix splash logo
+├── Remove remaining syntax errors
+├── Check all JS modules load
+└── Ensure login/logout works
+
+PHASE 2 — Authentication
+├── Student registration
+├── Teacher registration
+├── Email confirmation
+├── Admin approval
+└── Role routing
+
+PHASE 3 — Student
+├── Profile
+├── Class
+├── Attendance
+├── Marks
+├── Homework
+├── Exams
+├── Fees
+└── Notices
+
+PHASE 4 — Teacher
+├── Assigned classes
+├── Attendance
+├── Marks
+├── Homework
+├── Notices
+└── Student management
+
+PHASE 5 — Admin
+├── Students
+├── Teachers
+├── Classes
+├── Subjects
+├── Fees
+├── Notices
+├── Approvals
+└── Reports
+
+PHASE 6 — Production
+├── Remove demo data
+├── RLS audit
+├── Mobile testing
+├── Error handling
+└── Deployment
+27. The single most important thing
+
+Your friend doesn't need to understand the entire 500+ KB index.html on day one.
+
+Start with these files:
+
+1. index.html
+2. supabase-auth.js
+3. student-profile-sync.js
+4. registration-approval.js
+5. registration-review-ui.js
+
+Understand those first.
+
+The current auth module handles the Supabase connection and authentication/profile routing.
+
+The student sync handles the student-specific database → UI pipeline.
+
+The registration modules handle pending registration requests, approval/rejection, notifications, and realtime refresh.
+
+That's the core of the application.
+
+Everything else can be understood feature-by-feature
