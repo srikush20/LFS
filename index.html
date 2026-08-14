@@ -1351,17 +1351,6 @@ function openSheet(key){
   document.getElementById('sheetBody').innerHTML = c.body.replace(/\n/g,'<br>');
   showSheetEl();
 }
-  document.addEventListener('click', function(event) {
-  const button = event.target.closest('[data-detail]');
-
-  if (!button) return;
-
-  const key = button.dataset.detail;
-
-  if (!key) return;
-
-  openSheet(key);
-});
 function showSheetEl(){
   document.getElementById('sheet-overlay').classList.add('show');
   document.getElementById('sheet').classList.add('show');
