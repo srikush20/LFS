@@ -921,16 +921,248 @@ function buildGrid(containerId, data, cls){
   });
 }
 
-function buildNotices(){
+async function buildNotices(){
   const c = document.getElementById('noticesList');
-  c.innerHTML='';
-  NOTICES.forEach(([icon,title,date])=>{
-    c.appendChild(el(`<div class="list-row ripple" style="cursor:pointer" onclick="toast('Opened: ${title}')">
-      <i class="ic fa-solid ${icon}"></i>
-      <div class="txt"><b>${title}</b><span>${date}</span></div>
-      <i class="chev fa-solid fa-chevron-right"></i>
-    </div>`));
-  });
+
+  if (!c) {
+    console.warn('[LFS Notices] noticesList is not currently in the DOM.');
+    return;
+  }
+
+  c.replaceChildren();
+
+  const loading = document.createElement('div');
+  loading.className = 'list-row';
+  loading.innerHTML = `
+    <div class="txt">
+      <b>Loading notices...</b>
+      <span>Please wait</span>
+    </div>
+  `;
+  c.appendChild(loading);
+
+  try {
+    const sb =
+      window.LFS_SUPABASE_CLIENT ||
+      window.LFS_SUPABASE;
+
+    if (!sb) {
+      throw new Error('Supabase client is not initialized.');
+    }
+
+    const { data: notices, error } = await sb
+      .from('notices')
+      .select(`
+        id,
+        title,
+        content,
+        target_role,
+        class_section_id,
+        published_by,
+        is_published,
+        published_at,
+        attachment_url,
+        created_at
+      `)
+      .eq('is_published', true)
+      .order('published_at', {
+        ascending: false,
+        nullsFirst: false
+      })
+      .order('created_at', {
+        ascending: false
+      });
+
+    if (error) {
+      console.error(
+        '[LFS Notices] Query Error:',
+        error.message,
+        error.details,
+        error.hint
+      );
+
+      c.replaceChildren();
+
+      const errorRow = document.createElement('div');
+      errorRow.className = 'list-row';
+
+      const errorText = document.createElement('div');
+      errorText.className = 'txt';
+
+      const errorTitle = document.createElement('b');
+      errorTitle.textContent = 'Unable to load notices';
+
+      const errorSub = document.createElement('span');
+      errorSub.textContent = 'Please try again later.';
+
+      errorText.appendChild(errorTitle);
+      errorText.appendChild(errorSub);
+      errorRow.appendChild(errorText);
+      c.appendChild(errorRow);
+
+      return;
+    }
+
+    const profile = window.LFS_CURRENT_PROFILE || {};
+    const role = String(profile.role || '').toLowerCase();
+
+    const student = window.LFS_CURRENT_STUDENT || {};
+    const studentSectionId =
+      student.assignment?.class_section_id ??
+      student.class_section_id ??
+      null;
+
+    const visibleNotices = (notices || []).filter(notice => {
+      const targetRole =
+        String(notice.target_role || 'all').toLowerCase();
+
+      // Admin sees all published notices.
+      if (role === 'admin') {
+        return true;
+      }
+
+      // Notice intended for everyone.
+      if (targetRole === 'all') {
+        return true;
+      }
+
+      // Notice intended for current user's role.
+      if (targetRole !== role) {
+        return false;
+      }
+
+      // Class-specific notice.
+      if (
+        role === 'student' &&
+        notice.class_section_id != null
+      ) {
+        return (
+          studentSectionId != null &&
+          String(notice.class_section_id) ===
+            String(studentSectionId)
+        );
+      }
+
+      return true;
+    });
+
+    c.replaceChildren();
+
+    if (visibleNotices.length === 0) {
+      const emptyRow = document.createElement('div');
+      emptyRow.className = 'list-row';
+
+      const emptyText = document.createElement('div');
+      emptyText.className = 'txt';
+
+      const emptyTitle = document.createElement('b');
+      emptyTitle.textContent = 'No notices available';
+
+      const emptySub = document.createElement('span');
+      emptySub.textContent =
+        'There are no notices for you right now.';
+
+      emptyText.appendChild(emptyTitle);
+      emptyText.appendChild(emptySub);
+      emptyRow.appendChild(emptyText);
+      c.appendChild(emptyRow);
+
+      return;
+    }
+
+    visibleNotices.forEach(notice => {
+      const row = document.createElement('div');
+      row.className = 'list-row ripple';
+      row.style.cursor = 'pointer';
+
+      const icon = document.createElement('i');
+      icon.className =
+        'ic fa-solid fa-bullhorn';
+
+      const text = document.createElement('div');
+      text.className = 'txt';
+
+      const title = document.createElement('b');
+      title.textContent =
+        notice.title || 'School Notice';
+
+      const date = document.createElement('span');
+
+      const rawDate =
+        notice.published_at ||
+        notice.created_at;
+
+      if (rawDate) {
+        const d = new Date(rawDate);
+
+        date.textContent =
+          Number.isNaN(d.getTime())
+            ? ''
+            : d.toLocaleDateString(
+                'en-IN',
+                {
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric'
+                }
+              );
+      }
+
+      text.appendChild(title);
+      text.appendChild(date);
+
+      const chevron = document.createElement('i');
+      chevron.className =
+        'chev fa-solid fa-chevron-right';
+
+      row.appendChild(icon);
+      row.appendChild(text);
+      row.appendChild(chevron);
+
+      row.addEventListener('click', () => {
+        openSheet('live-notice-' + notice.id);
+      });
+
+      // Store the notice temporarily for the sheet renderer.
+      window.LFS_NOTICE_CACHE =
+        window.LFS_NOTICE_CACHE || {};
+
+      window.LFS_NOTICE_CACHE[notice.id] = notice;
+
+      c.appendChild(row);
+    });
+
+    console.log(
+      `[LFS Notices] Loaded ${visibleNotices.length} visible notice(s).`
+    );
+
+  } catch (error) {
+    console.error(
+      '[LFS Notices] Unexpected Error:',
+      error
+    );
+
+    c.replaceChildren();
+
+    const errorRow = document.createElement('div');
+    errorRow.className = 'list-row';
+
+    const errorText = document.createElement('div');
+    errorText.className = 'txt';
+
+    const errorTitle = document.createElement('b');
+    errorTitle.textContent = 'Unable to load notices';
+
+    const errorSub = document.createElement('span');
+    errorSub.textContent =
+      'Please try again later.';
+
+    errorText.appendChild(errorTitle);
+    errorText.appendChild(errorSub);
+    errorRow.appendChild(errorText);
+
+    c.appendChild(errorRow);
+  }
 }
 function buildGallery(){
   const c = document.getElementById('galleryGrid');
@@ -974,8 +1206,13 @@ function withSkeleton(tab){
   const original = target.innerHTML;
   target.innerHTML = `<div style="padding-top:16px;">
     <div class="skel skel-row"></div><div class="skel skel-row"></div><div class="skel skel-row"></div>`;
-  setTimeout(()=>{ target.innerHTML = original; }, 550);
-}
+setTimeout(() => {
+  target.innerHTML = original;
+
+  if (tab === 'notices') {
+    buildNotices();
+  }
+}, 550);}
 
 /* ============================================================
    AUTH FLOW
@@ -1047,6 +1284,55 @@ function doLogout(){
    BOTTOM SHEET
 ============================================================ */
 function openSheet(key){
+  if (String(key).startsWith('live-notice-')) {
+    const id = key.replace('live-notice-', '');
+    const notice =
+      window.LFS_NOTICE_CACHE?.[id];
+
+    if (!notice) {
+      toast('Notice data could not be loaded.');
+      return;
+    }
+
+    document.getElementById('sheetIcon').className =
+      'sic fa-solid fa-bullhorn';
+
+    document.getElementById('sheetTitle').textContent =
+      notice.title || 'School Notice';
+
+    const body = document.getElementById('sheetBody');
+    body.replaceChildren();
+
+    const content = document.createElement('div');
+
+    content.style.cssText =
+      'white-space:pre-wrap;line-height:1.6;color:var(--ink);';
+
+    content.textContent =
+      notice.content || 'No additional details.';
+
+    body.appendChild(content);
+
+    if (notice.attachment_url) {
+      const link = document.createElement('a');
+
+      link.href = notice.attachment_url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'View attachment';
+
+      link.style.cssText =
+        'display:inline-block;margin-top:14px;color:var(--primary);font-weight:700;text-decoration:none;';
+
+      body.appendChild(link);
+    }
+
+    showSheetEl();
+    return;
+  }
+
+  // KEEP THE REST OF YOUR EXISTING openSheet() CODE BELOW THIS.
+function openSheet(key){
   if(key==='gallery'){ navTo('gallery'); return; }
   if(key==='contact'){ navTo('contact'); return; }
   if(key==='news' || key==='circulars'){ navTo('notices'); return; }
@@ -1065,6 +1351,17 @@ function openSheet(key){
   document.getElementById('sheetBody').innerHTML = c.body.replace(/\n/g,'<br>');
   showSheetEl();
 }
+  document.addEventListener('click', function(event) {
+  const button = event.target.closest('[data-detail]');
+
+  if (!button) return;
+
+  const key = button.dataset.detail;
+
+  if (!key) return;
+
+  openSheet(key);
+});
 function showSheetEl(){
   document.getElementById('sheet-overlay').classList.add('show');
   document.getElementById('sheet').classList.add('show');
@@ -1161,7 +1458,7 @@ function toast(msg){
   if(sw) sw.classList.toggle('on', isDark);
 }
  </script>
-  <script src="notice-sync.js"></script>
+  
   <script src="supabase-auth.js"></script>
   <script src="registration-approval.js"></script>
   <script src="registration-review-ui.js"></script>
