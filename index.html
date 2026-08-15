@@ -779,6 +779,7 @@ const ADMIN_LINKS = [
   ['timetablemgmt','fa-clock','Timetable'],['exammgmt','fa-file-circle-plus','Exams'],
   ['resultmgmt','fa-chart-simple','Results'],['transportmgmt','fa-bus','Transport'],
   ['librarymgmt','fa-book','Library'],['websitenotices','fa-newspaper','Notices'],
+  ['createnotice','fa-pen-to-square','Create Notice'],
   ['gallerymgmt','fa-images','Gallery'],['eventsmgmt','fa-star','Events'],
   ['notifsystem','fa-bell','Notifications'],['rolepermissions','fa-user-lock','Permissions'],
   ['reports','fa-file-lines','Reports'],['dbbackup','fa-database','Backup']
@@ -1294,6 +1295,10 @@ function openSheet(key){
   if(key==='takeattendance'){ showAttendance(); return; }
   if(key==='feepay'){ showFeePay(); return; }
   if(key==='bustracking'){ showBusTracking(); return; }
+    if (key === 'createnotice') {
+    showCreateNotice();
+    return;
+  }
 
   const c = CONTENT[key];
   if(!c) return;
@@ -1301,6 +1306,195 @@ function openSheet(key){
   document.getElementById('sheetTitle').innerHTML = c.t + (c.tag?` <span class="tag ${c.tag==='Demo'?'demo':''}" style="margin-left:6px;">${c.tag}</span>`:'');
   document.getElementById('sheetBody').innerHTML = c.body.replace(/\n/g,'<br>');
   showSheetEl();
+}
+function showCreateNotice() {
+  document.getElementById('sheetIcon').className =
+    'sic fa-solid fa-pen-to-square';
+
+  document.getElementById('sheetTitle').textContent =
+    'Create Notice';
+
+  document.getElementById('sheetBody').innerHTML = `
+    <div class="demo-form">
+
+      <div class="field">
+        <label>Notice Title</label>
+        <div class="input-wrap">
+          <i class="fa-solid fa-heading"></i>
+          <input
+            id="createNoticeTitle"
+            type="text"
+            placeholder="Enter notice title"
+            autocomplete="off"
+          >
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Notice Content</label>
+        <div class="input-wrap">
+          <i class="fa-solid fa-align-left"></i>
+          <textarea
+            id="createNoticeContent"
+            rows="5"
+            placeholder="Write the notice..."
+            style="width:100%;resize:vertical;"
+          ></textarea>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Target Audience</label>
+        <div class="input-wrap">
+          <i class="fa-solid fa-users"></i>
+          <select id="createNoticeRole" style="width:100%;">
+            <option value="all">Everyone</option>
+            <option value="student">Students</option>
+            <option value="teacher">Teachers</option>
+            <option value="admin">Admins</option>
+          </select>
+        </div>
+      </div>
+
+      <button
+        class="btn block ripple"
+        id="createNoticePublishBtn"
+        onclick="submitCreateNotice()"
+      >
+        <i class="fa-solid fa-paper-plane"></i>
+        Publish Notice
+      </button>
+
+    </div>
+  `;
+
+  showSheetEl();
+}
+
+async function submitCreateNotice() {
+  const titleEl =
+    document.getElementById('createNoticeTitle');
+
+  const contentEl =
+    document.getElementById('createNoticeContent');
+
+  const roleEl =
+    document.getElementById('createNoticeRole');
+
+  const publishBtn =
+    document.getElementById('createNoticePublishBtn');
+
+  const title =
+    titleEl?.value.trim() || '';
+
+  const content =
+    contentEl?.value.trim() || '';
+
+  const targetRole =
+    roleEl?.value || 'all';
+
+  if (!title) {
+    toast('Enter a notice title.');
+    titleEl?.focus();
+    return;
+  }
+
+  if (!content) {
+    toast('Enter the notice content.');
+    contentEl?.focus();
+    return;
+  }
+
+  try {
+    const sb =
+      window.LFS_SUPABASE_CLIENT ||
+      window.LFS_SUPABASE;
+
+    if (!sb) {
+      throw new Error(
+        'Supabase client is not initialized.'
+      );
+    }
+
+    const { data: { user }, error: userError } =
+      await sb.auth.getUser();
+
+    if (userError) {
+      throw userError;
+    }
+
+    if (!user) {
+      toast('Please log in as an admin first.');
+      return;
+    }
+
+    if (publishBtn) {
+      publishBtn.disabled = true;
+      publishBtn.innerHTML =
+        '<i class="fa-solid fa-spinner fa-spin"></i> Publishing...';
+    }
+
+    const { error } = await sb
+      .from('notices')
+      .insert({
+        title,
+        content,
+        target_role: targetRole,
+        class_section_id: null,
+        published_by: user.id,
+        is_published: true,
+        published_at: new Date().toISOString()
+      });
+
+    if (error) {
+      console.error(
+        '[LFS Notices] Publish Error:',
+        error.message,
+        error.details,
+        error.hint
+      );
+
+      toast(
+        'Failed to publish notice: ' +
+        error.message
+      );
+
+      return;
+    }
+
+    toast('Notice published successfully.');
+
+    closeSheet();
+
+    /*
+     * Refresh the notices page if it is currently open.
+     */
+    if (
+      typeof buildNotices === 'function' &&
+      document.querySelector(
+        '.screen[data-screen="notices"].active'
+      )
+    ) {
+      buildNotices();
+    }
+
+  } catch (error) {
+    console.error(
+      '[LFS Notices] Publish Exception:',
+      error
+    );
+
+    toast(
+      'Could not publish the notice.'
+    );
+
+  } finally {
+    if (publishBtn) {
+      publishBtn.disabled = false;
+      publishBtn.innerHTML =
+        '<i class="fa-solid fa-paper-plane"></i> Publish Notice';
+    }
+  }
 }
 function showSheetEl(){
   document.getElementById('sheet-overlay').classList.add('show');
