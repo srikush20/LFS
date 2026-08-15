@@ -1284,55 +1284,6 @@ function doLogout(){
    BOTTOM SHEET
 ============================================================ */
 function openSheet(key){
-  if (String(key).startsWith('live-notice-')) {
-    const id = key.replace('live-notice-', '');
-    const notice =
-      window.LFS_NOTICE_CACHE?.[id];
-
-    if (!notice) {
-      toast('Notice data could not be loaded.');
-      return;
-    }
-
-    document.getElementById('sheetIcon').className =
-      'sic fa-solid fa-bullhorn';
-
-    document.getElementById('sheetTitle').textContent =
-      notice.title || 'School Notice';
-
-    const body = document.getElementById('sheetBody');
-    body.replaceChildren();
-
-    const content = document.createElement('div');
-
-    content.style.cssText =
-      'white-space:pre-wrap;line-height:1.6;color:var(--ink);';
-
-    content.textContent =
-      notice.content || 'No additional details.';
-
-    body.appendChild(content);
-
-    if (notice.attachment_url) {
-      const link = document.createElement('a');
-
-      link.href = notice.attachment_url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.textContent = 'View attachment';
-
-      link.style.cssText =
-        'display:inline-block;margin-top:14px;color:var(--primary);font-weight:700;text-decoration:none;';
-
-      body.appendChild(link);
-    }
-
-    showSheetEl();
-    return;
-  }
-
-  // KEEP THE REST OF YOUR EXISTING openSheet() CODE BELOW THIS.
-function openSheet(key){
   if(key==='gallery'){ navTo('gallery'); return; }
   if(key==='contact'){ navTo('contact'); return; }
   if(key==='news' || key==='circulars'){ navTo('notices'); return; }
