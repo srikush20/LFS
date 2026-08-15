@@ -47,7 +47,7 @@ html.dark{
 html,body{height:100%; margin:0;}
 body{
   font-family:var(--font-body);
-  background: (--bg); /* small harmless change avoided - keep theme */
+  background: var(--bg); /* small harmless change avoided - keep theme */
   color:var(--ink);
   overflow:hidden;
 }
@@ -1609,7 +1609,7 @@ function toast(msg){
   if(sw) sw.classList.toggle('on', isDark);
 }
  </script>
-  
+  <script src="notice-sync.js"></script>
   <script src="supabase-auth.js"></script>
   <script src="registration-approval.js"></script>
   <script src="registration-review-ui.js"></script>
